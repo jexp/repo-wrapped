@@ -1,0 +1,9 @@
+{
+  "name": "myrepo",
+  "repos": [{"name": "myrepo", "github": "OWNER/REPO", "clone": "/path/to/clone", "refs": ["origin/main"]}],
+  "linear": null,
+  "persons": "example-generic.persons.json",
+  "areas": "generic",
+  "code_exts": [".py", ".ts"],
+  "sessions_match": "myrepo"
+}

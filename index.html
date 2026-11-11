@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Repo Wrapped</title>
+<style>
+:root{--bg:#0f1220;--card:#181c30;--ink:#eef0ff;--mute:#9aa0c4;--a:#7c5cff;--b:#22d3a6;--c:#ffb454;--d:#ff6b8b;--e:#4cc3ff;--grid:#2a2f4d}
+@media (prefers-color-scheme:light){:root{--bg:#f4f5fb;--card:#fff;--ink:#14172b;--mute:#5c6287;--grid:#dde0f0}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+header{padding:28px 16px 8px;max-width:1200px;margin:auto}
+h1{font-size:44px;margin:0;background:linear-gradient(90deg,var(--a),var(--b),var(--c));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--mute)}main{max-width:1200px;margin:auto;padding:0 16px 60px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0}
+.chip{padding:6px 12px;border-radius:99px;border:1px solid var(--grid);background:var(--card);cursor:pointer;user-select:none}
+.chip.on{background:var(--a);color:#fff;border-color:var(--a)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+.card{background:var(--card);border-radius:14px;padding:16px;overflow:hidden}.card.wide{grid-column:1/-1}
+.card h2{margin:0 0 2px;font-size:16px}.card p{margin:0 0 10px;color:var(--mute);font-size:13px}
+.big{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0}
+.stat{background:var(--card);border-radius:14px;padding:14px}.stat b{display:block;font-size:30px;line-height:1.1}.stat span{color:var(--mute);font-size:12px}
+svg{width:100%;height:auto;display:block}text{fill:var(--mute);font-size:11px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--mute);margin-top:6px}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:4px 8px;text-align:right;border-bottom:1px solid var(--grid)}th:first-child,td:first-child{text-align:left}
+.sl{display:grid;grid-template-columns:200px 1fr 70px;gap:8px;align-items:center;font-size:13px}
+.arch{display:grid;gap:8px}.grp{border:1px dashed var(--grid);border-radius:10px;padding:8px}.grp>b{font-size:12px;color:var(--mute)}
+.boxes{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.box{border-radius:8px;padding:6px 8px;font-size:12px;min-width:110px;flex:1;color:#fff;text-shadow:0 1px 2px #0008}
+.box small{display:block;opacity:.9}
+input[type=file]{color:var(--mute)}
+</style></head><body>
+<header><h1>Repo Wrapped</h1><div class="sub" id="sub">Pick one or more people. Data = long-format CSV per person (commits, PRs, tickets, CI runs, agent sessions).</div></header>
+<main>
+<div class="bar" id="people"></div>
+<div class="bar"><label class="sub">Add CSV(s): <input type="file" id="file" accept=".csv" multiple></label><span class="sub" id="status"></span></div>
+<div class="big" id="stats"></div>
+<div class="grid">
+<div class="card wide"><h2>Working-hours heatmap</h2><p>Commits, PR opens and agent sessions by weekday and hour, in each person's modal timezone</p><div id="heat"></div></div>
+<div class="card"><h2>Comments and text volume</h2><p>PR + ticket comments per month (bars) and characters written (line)</p><div id="comments"></div></div>
+<div class="card"><h2>CI runs and CI time</h2><p>Runs per month (bars) and total runner-hours (line); red share = failed</p><div id="ci"></div></div>
+<div class="card wide"><h2>Where the work landed</h2><p>Architecture overlay: box colour = share of changed prod+test lines in that area</p><div id="arch" class="arch"></div></div>
+<div class="card"><h2>Complexity of PRs</h2><p>Score 1–10 (lines, areas, crates, core engine, discussion, ADR)</p><div id="cx"></div></div>
+<div class="card"><h2>Production vs test lines per month</h2><p>Lines added by merged PRs (Rust only; commits across all branches would double count)</p><div id="loc"></div></div>
+<div class="card"><h2>Agent interactions</h2><p>Bot comments, agent-trailer commits, Claude prompts and tool calls per month</p><div id="agent"></div></div>
+<div class="card"><h2>PR lead time</h2><p>Hours from open to merge (median per month)</p><div id="lead"></div></div>
+<div class="card"><h2>Tickets opened vs closed</h2><p>Linear issues per month</p><div id="tix"></div></div>
+<div class="card"><h2>Biggest PRs</h2><p>By complexity, then lines</p><div id="top"></div></div>
+<div class="card wide"><h2>Equivalent person-days by hand</h2><p>Hand-written Rust estimate, production and test separated. Adjust the rates.</p>
+<div class="sl"><span>Prod lines / day</span><input id="rp" type="range" min="20" max="300" value="80"><b id="vp">80</b></div>
+<div class="sl"><span>Test lines / day</span><input id="rt" type="range" min="40" max="600" value="160"><b id="vt">160</b></div>
+<div class="sl"><span>Complexity drag (0 = none)</span><input id="rc" type="range" min="0" max="100" value="50"><b id="vc">0.5</b></div>
+<div id="days"></div></div>
+</div></main>
+<script>
+const COLORS=["#7c5cff","#22d3a6","#ffb454","#ff6b8b","#4cc3ff","#b0e05a"];
+let AREAS=[];
+const state={rows:{},sel:new Set(),names:{}};
+const $=id=>document.getElementById(id);
+const num=v=>v===""||v==null?0:+v;
+function parseCSV(t){const out=[];let row=[],f="",q=false;for(let i=0;i<t.length;i++){const c=t[i];if(q){if(c=='"'){if(t[i+1]=='"'){f+='"';i++}else q=false}else f+=c}else if(c=='"')q=true;else if(c==","){row.push(f);f=""}else if(c=="\n"){row.push(f);out.push(row);row=[];f=""}else if(c!="\r")f+=c}if(f||row.length){row.push(f);out.push(row)}
+const h=out.shift();return out.filter(r=>r.length>1).map(r=>{const o={};h.forEach((k,i)=>o[k]=r[i]);return o})}
+function tzMin(s){const m=/([+-])(\d\d):?(\d\d)/.exec(s||"+00:00");return m?(m[1]=="-"?-1:1)*(+m[2]*60+ +m[3]):0}
+function local(r,field){const s=r[field||"start_at"];if(!s)return null;const d=new Date(s);if(isNaN(d))return null;return new Date(d.getTime()+tzMin(r.tz)*60000)}
+const month=d=>d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");
+function svgWrap(w,h,inner){return `<svg viewBox="0 0 ${w} ${h}">${inner}</svg>`}
+function selRows(){let a=[];for(const p of state.sel)a=a.concat(state.rows[p]||[]);return a}
+function months(rows,f){const s=new Set();rows.forEach(r=>{const d=local(r,f);if(d)s.add(month(d))});const arr=[...s].sort();if(!arr.length)return[];const out=[];let [y,m]=arr[0].split("-").map(Number);const [ye,me]=arr[arr.length-1].split("-").map(Number);while(y<ye||(y==ye&&m<=me)){out.push(y+"-"+String(m).padStart(2,"0"));m++;if(m>12){m=1;y++}}return out}
+function stackedBars(el,ms,series,opts={}){const W=560,H=210,L=40,B=26,T=8;if(!ms.length){el.innerHTML="<p>no data</p>";return}
+const tot=ms.map((m,i)=>series.reduce((s,x)=>s+(x.data[i]||0),0));let mx=Math.max(1,...tot);const bw=(W-L)/ms.length;let g="";
+for(let k=0;k<=4;k++){const y=T+(H-T-B)*(1-k/4);g+=`<line x1="${L}" x2="${W}" y1="${y}" y2="${y}" stroke="var(--grid)"/><text x="${L-4}" y="${y+3}" text-anchor="end">${fmt(mx*k/4)}</text>`}
+ms.forEach((m,i)=>{let y=H-B;series.forEach((s,j)=>{const v=s.data[i]||0,h=(H-T-B)*v/mx;y-=h;g+=`<rect x="${L+i*bw+1}" y="${y}" width="${Math.max(1,bw-2)}" height="${h}" fill="${s.color||COLORS[j]}"><title>${m} ${s.name}: ${fmt(v)}</title></rect>`});
+if(i%Math.ceil(ms.length/10)==0)g+=`<text x="${L+i*bw}" y="${H-8}">${m.slice(2)}</text>`});
+if(opts.line){const lm=Math.max(1,...opts.line.data);const pts=ms.map((m,i)=>`${L+i*bw+bw/2},${T+(H-T-B)*(1-(opts.line.data[i]||0)/lm)}`).join(" ");g+=`<polyline points="${pts}" fill="none" stroke="var(--c)" stroke-width="2"/>`;g+=`<text x="${W}" y="${T+8}" text-anchor="end" fill="var(--c)">${opts.line.name}, max ${fmt(lm)}</text>`}
+el.innerHTML=svgWrap(W,H,g)+`<div class="legend">${series.map((s,j)=>`<span><i style="background:${s.color||COLORS[j]}"></i>${s.name}</span>`).join("")}</div>`}
+function fmt(n){n=+n;return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e4?(n/1e3).toFixed(0)+"k":n>=1e3?(n/1e3).toFixed(1)+"k":(Math.round(n*10)/10).toString()}
+function sumBy(rows,types,ms,fn,f){const o=ms.map(()=>0);const ix=Object.fromEntries(ms.map((m,i)=>[m,i]));rows.forEach(r=>{if(!types.includes(r.record_type))return;const d=local(r,f);if(!d)return;const i=ix[month(d)];if(i!=null)o[i]+=fn(r)});return o}
+function median(a){if(!a.length)return 0;a=[...a].sort((x,y)=>x-y);return a[Math.floor(a.length/2)]}
+
+function render(){const rows=selRows();const names=[...state.sel].map(p=>state.names[p]||p).join(", ")||"nobody";$("sub").textContent=names+" · "+rows.length.toLocaleString()+" records";
+const by=t=>rows.filter(r=>r.record_type==t);const commits=by("commit"),prs=by("pr"),tix=by("ticket"),ci=by("ci_run"),ses=by("session");
+const mp=prs.filter(r=>r.state=="MERGED");const sum=(a,k)=>a.reduce((s,r)=>s+num(r[k]),0);
+const stats=[["Commits",commits.length],["PRs",prs.length],["Tickets",tix.length],["Prod lines + (merged PRs)",sum(mp,"prod_add")],["Prod lines −",sum(mp,"prod_del")],["Test lines +",sum(mp,"test_add")],["CI runs",ci.length],["CI hours",sum(ci,"ci_minutes")/60],["Agent commits",sum(commits,"agent_commits")],["Claude prompts",sum(ses,"agent_prompts")],["Claude tool calls",sum(ses,"agent_tool_calls")],["Comments",sum(prs,"comments")+sum(tix,"comments")]];
+$("stats").innerHTML=stats.map(([k,v])=>`<div class="stat"><b>${fmt(v)}</b><span>${k}</span></div>`).join("");
+// heatmap
+{const g=Array.from({length:7},()=>Array(24).fill(0));let mx=1;rows.filter(r=>["commit","session","pr"].includes(r.record_type)).forEach(r=>{const d=local(r,r.record_type=="pr"?"created_at":"start_at");if(!d)return;const wd=(d.getUTCDay()+6)%7,h=d.getUTCHours();mx=Math.max(mx,++g[wd][h])});
+const cw=22,W=60+24*cw,H=20+7*cw+10;let s="";["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].forEach((n,i)=>s+=`<text x="4" y="${20+i*cw+15}">${n}</text>`);for(let h=0;h<24;h++)s+=`<text x="${60+h*cw+cw/2}" y="12" text-anchor="middle">${h}</text>`;
+g.forEach((r,i)=>r.forEach((v,h)=>{const a=v/mx;s+=`<rect x="${60+h*cw}" y="${20+i*cw}" width="${cw-2}" height="${cw-2}" rx="4" fill="var(--a)" fill-opacity="${v?0.12+0.88*Math.sqrt(a):0.05}"><title>${v} events</title></rect>`}));$("heat").innerHTML=svgWrap(W,H,s)}
+// comments
+{const ms=months(rows.filter(r=>["pr","ticket"].includes(r.record_type)),"created_at");const c=sumBy(rows,["pr","ticket"],ms,r=>num(r.comments),"created_at"),ch=sumBy(rows,["pr","ticket"],ms,r=>num(r.comment_chars),"created_at");stackedBars($("comments"),ms,[{name:"comments",data:c,color:COLORS[0]}],{line:{name:"chars",data:ch}})}
+// ci
+{const ms=months(ci,"start_at");const ok=sumBy(ci,["ci_run"],ms,r=>1-num(r.ci_fail),"start_at"),bad=sumBy(ci,["ci_run"],ms,r=>num(r.ci_fail),"start_at"),h=sumBy(ci,["ci_run"],ms,r=>num(r.ci_minutes)/60,"start_at");stackedBars($("ci"),ms,[{name:"passed",data:ok,color:COLORS[1]},{name:"failed",data:bad,color:COLORS[3]}],{line:{name:"runner hours",data:h}})}
+// arch
+{const tot={},cnt={};commits.forEach(r=>{const a=(r.areas||r.area_primary||"other").split("|").filter(Boolean);const l=(num(r.prod_add)+num(r.prod_del)+num(r.test_add)+num(r.test_del)+num(r.doc_add))/Math.max(1,a.length);a.forEach(x=>{tot[x]=(tot[x]||0)+l;cnt[x]=(cnt[x]||0)+1})});const mx=Math.max(1,...Object.values(tot));
+$("arch").innerHTML=AREAS.map(([t,g,items])=>`<div class="grp"><b>${t}</b><div class="boxes">${items.map(([id,l])=>{const v=tot[id]||0,a=Math.sqrt(v/mx);return `<div class="box" style="background:color-mix(in srgb,var(--a) ${Math.round(8+92*a)}%,var(--card));${a<.3?"color:var(--ink);text-shadow:none":""}" title="${id}">${l}<small>${fmt(v)} lines · ${cnt[id]||0} commits</small></div>`}).join("")}</div></div>`).join("")}
+// complexity
+{const h=Array(10).fill(0);prs.forEach(r=>{if(r.complexity)h[Math.min(9,Math.max(0,Math.round(+r.complexity)-1))]++});const mx=Math.max(1,...h),W=560,H=210;let s="";h.forEach((v,i)=>{const bh=(H-40)*v/mx;s+=`<rect x="${30+i*52}" y="${H-24-bh}" width="46" height="${bh}" fill="${COLORS[0]}" fill-opacity="${.35+.065*i}"><title>${v} PRs</title></rect><text x="${53+i*52}" y="${H-8}" text-anchor="middle">${i+1}</text><text x="${53+i*52}" y="${H-28-bh}" text-anchor="middle">${v||""}</text>`});$("cx").innerHTML=svgWrap(W,H,s)}
+// loc
+{const ms=months(mp,"created_at");const m2=rows.filter(r=>r.record_type=="pr"&&r.state=="MERGED");stackedBars($("loc"),ms,[{name:"prod",data:sumBy(m2,["pr"],ms,r=>num(r.prod_add),"created_at"),color:COLORS[0]},{name:"test",data:sumBy(m2,["pr"],ms,r=>num(r.test_add),"created_at"),color:COLORS[1]}])}
+// agent
+{const ms=months(rows.filter(r=>["commit","pr","session"].includes(r.record_type)));stackedBars($("agent"),ms,[{name:"bot comments",data:sumBy(rows,["pr","ticket"],ms,r=>num(r.agent_comments),"created_at"),color:COLORS[2]},{name:"agent commits",data:sumBy(rows,["commit"],ms,r=>num(r.agent_commits)),color:COLORS[0]},{name:"claude prompts",data:sumBy(rows,["session"],ms,r=>num(r.agent_prompts)),color:COLORS[4]}],{line:{name:"tool calls",data:sumBy(rows,["session"],ms,r=>num(r.agent_tool_calls))}})}
+// lead
+{const ms=months(prs,"created_at");const b=ms.map(()=>[]);const ix=Object.fromEntries(ms.map((m,i)=>[m,i]));prs.filter(r=>r.state=="MERGED"&&r.duration_hours).forEach(r=>{const d=local(r,"created_at");const i=ix[month(d)];if(i!=null)b[i].push(+r.duration_hours)});stackedBars($("lead"),ms,[{name:"median hours",data:b.map(median),color:COLORS[4]}])}
+// tickets
+{const ms=months(tix,"created_at");stackedBars($("tix"),ms,[{name:"opened",data:sumBy(rows,["ticket"],ms,()=>1,"created_at"),color:COLORS[0]},{name:"done",data:ms.map(m=>tix.filter(r=>r.state=="Done"&&r.end_at&&month(new Date(r.end_at))==m).length),color:COLORS[1]}])}
+// top
+{const t=[...prs].sort((a,b)=>num(b.complexity)-num(a.complexity)||num(b.prod_add)-num(a.prod_add)).slice(0,8);$("top").innerHTML="<table><tr><th>PR</th><th>cx</th><th>prod+</th><th>test+</th></tr>"+t.map(r=>`<tr><td><a href="${r.url}" style="color:var(--e)" target="_blank">${r.id}</a> ${(r.title||"").slice(0,48)}</td><td>${r.complexity}</td><td>${fmt(num(r.prod_add))}</td><td>${fmt(num(r.test_add))}</td></tr>`).join("")+"</table>"}
+days(mp)}
+function days(commits){/* merged PRs */const rp=+$("rp").value,rt=+$("rt").value,rc=+$("rc").value/100;$("vp").textContent=rp;$("vt").textContent=rt;$("vc").textContent=rc.toFixed(2);
+let dp=0,dt=0,dd=0;commits.forEach(r=>{const k=1+rc*(num(r.complexity)-5)/5;dp+=(num(r.prod_add)+.5*num(r.prod_del))/rp*k;dt+=(num(r.test_add)+.5*num(r.test_del))/rt*k;dd+=(num(r.doc_add))/400});
+const yrs=(dp+dt)/220;$("days").innerHTML=`<table><tr><th></th><th>person-days</th><th>person-months (21d)</th></tr><tr><td>Production Rust</td><td>${fmt(dp)}</td><td>${(dp/21).toFixed(1)}</td></tr><tr><td>Test Rust</td><td>${fmt(dt)}</td><td>${(dt/21).toFixed(1)}</td></tr><tr><td>Docs / ADRs (400 lines/day)</td><td>${fmt(dd)}</td><td>${(dd/21).toFixed(1)}</td></tr><tr><td><b>Total</b></td><td><b>${fmt(dp+dt+dd)}</b></td><td><b>${((dp+dt+dd)/21).toFixed(1)}</b></td></tr></table><p class="sub">≈ ${yrs.toFixed(1)} person-years of code at 220 working days. Based on merged PRs (one squashed diff each); the 4k-commit git history spans every branch and would count rebased work repeatedly.</p>`}
+["rp","rt","rc"].forEach(i=>$(i).oninput=()=>days(selRows().filter(r=>r.record_type=="pr"&&r.state=="MERGED")));
+function chips(){$("people").innerHTML=Object.keys(state.rows).map((p,i)=>`<span class="chip ${state.sel.has(p)?"on":""}" data-p="${p}">${state.names[p]||p}</span>`).join("");document.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{const p=c.dataset.p;state.sel.has(p)?state.sel.delete(p):state.sel.add(p);chips();render()})}
+function add(p,text,name){state.rows[p]=parseCSV(text);state.names[p]=name||p;state.sel.add(p)}
+function boot(){const M=window.WRAPPED_MANIFEST||{},D=window.WRAPPED_DATA||{};Object.keys(D).forEach(p=>add(p,D[p],(M[p]||{}).name));if(!Object.keys(state.rows).length)$("status").textContent="No bundle found: use the file picker with data/*.csv";[...state.sel].slice(1).forEach(p=>state.sel.delete(p));chips();render()}
+$("file").onchange=async e=>{for(const f of e.target.files){add(f.name.replace(/\.csv$/,""),await f.text())}chips();render()};
+(function(){const q=new URLSearchParams(location.search).get("out")||"";if(!q){$("status").textContent="Add ?out=<name> (see README) or pick CSVs below";boot();return}const sc=document.createElement("script");sc.src="out/"+q+"/data/bundle.js";
+sc.onload=()=>{if(window.WRAPPED_AREAS)AREAS=window.WRAPPED_AREAS.map(g=>[g[0],g[1],g[2]]);document.querySelector("h1").textContent=(window.WRAPPED_TITLE||q)+" Wrapped";boot()};
+sc.onerror=()=>{$("status").textContent="No out/"+q+"/data/bundle.js — run scripts/update.py --config configs/"+q+".json, or pick CSVs below";boot()};document.body.appendChild(sc)})();
+</script></body></html>

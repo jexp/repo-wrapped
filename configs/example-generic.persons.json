@@ -1,0 +1,3 @@
+{
+  "alice": {"name": "Alice Example", "git_names": ["Alice Example"], "git_emails": ["alice@example.com"], "gh": ["alice"], "linear": [], "sessions": true}
+}

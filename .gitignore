@@ -1,0 +1,6 @@
+out/
+private/
+*.csv
+__pycache__/
+*.tmp
+.DS_Store
