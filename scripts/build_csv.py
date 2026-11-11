@@ -8,7 +8,7 @@ from common import RAW as R, DATA as D, PERSONS as persons, REPOS, LINEAR, gh_ur
 from areas import area_of, kind, crate_of, CORE, layout
 COLS = ["record_type","id","person","repo","title","state","created_at","start_at","end_at","duration_hours","tz","area_primary","areas","crates","files",
         "prod_add","prod_del","test_add","test_del","doc_add","doc_del","other_add","other_del","commits","comments","comment_chars","reviews",
-        "agent_comments","agent_commits","agent_prompts","agent_tool_calls","active_minutes","ci_runs","ci_minutes","ci_fail","complexity","labels","url","extra","tokens_in","tokens_out","cache_read","cache_write","cost_usd","models","human_touches","reverted","first_pass","ticket"]
+        "agent_comments","agent_commits","agent_prompts","agent_tool_calls","active_minutes","ci_runs","ci_minutes","ci_fail","complexity","labels","url","extra","tokens_in","tokens_out","cache_read","cache_write","cost_usd","models","human_touches","reverted","first_pass","ticket","stellar_found","stellar_open","stellar_rounds","deferrals","stellar_resolved"]
 BOT = re.compile(r"(\[bot\]$|^app/|^copilot|^cursor|^stellar|^github-actions|^release-bot|bot$)", re.I)
 
 PRICING = {k: v for k, v in (CFG.get("pricing") or {}).items() if not k.startswith("_")}
@@ -39,6 +39,21 @@ BR = collections.defaultdict(lambda: collections.defaultdict(collections.Counter
 for _s in jl("sessions.jsonl"):
     for br, ms in _s.get("by_branch", {}).items():
         for m, u in ms.items(): BR[br][m].update(u)
+FIND = re.compile(r"^\[(\w+)\]\s+(\w[\w-]*)\s+\(([^)]+)\)\s+(F-\d+-\d+):\s*(\S+?)(?::[\d,-]+)?\s+\u2014\s+(.*)$")
+DEFER = re.compile(r"deferred|review-tasks|agent backlog", re.I)
+def stellar_of(cm):
+    """unique findings of a PR from the CI stellar round comments: {id: dict}, open ids in the latest round, round count"""
+    rounds = [c for c in cm if (c["author"] or {}).get("login") == "github-actions" and (c["bodyText"] or "").startswith("Stellar review (stellar")]
+    found = {}; last_open = set(); resolved = set()
+    for c in sorted(rounds, key=lambda c: c["createdAt"]):
+        ids = set()
+        for ln in (c["bodyText"] or "").split("\n")[1:]:
+            if ln.startswith("Resolved:"): resolved.update(re.findall(r"F-\d+-\d+", ln))
+            m = FIND.match(ln.strip())
+            if not m: continue
+            ids.add(m[4]); found.setdefault(m[4], {"sev": m[1], "cat": m[2], "rule": m[3], "path": m[5], "text": m[6][:160], "at": c["createdAt"], "seen": 0})["seen"] += 1
+        last_open = ids
+    return found, last_open, len(rounds), resolved
 TICKET = re.compile(r"\b[A-Z]{2,6}-\d+\b")
 
 # ---------- identity
@@ -136,6 +151,8 @@ for repo in REPOS:
         cx = complexity((s["prod_add"], s["prod_del"]), (s["test_add"], s["test_del"]), len(areas), len(crates), any(a in CORE for a in areas),
                         p["comments"]["totalCount"] + p["reviews"]["totalCount"], adr)
         pr_info[(repo, p["number"])] = {"areas": areas, "cx": cx, "s": s}
+        sf, sopen, srounds, sres = stellar_of(cm)
+        ndef = sum(1 for c in cm if (c["author"] or {}).get("login") != "github-actions" and DEFER.search(c["bodyText"] or ""))
         tk, pcost, pun = tally(BR.get(p["headRefName"], {}))
         human = sum(1 for c in cm if not BOT.search((c["author"] or {}).get("login") or "ghost")) + sum(1 for r in rv if not BOT.search((r["author"] or {}).get("login") or "ghost"))
         tmatch = TICKET.search(p["title"] or "") or TICKET.search(p["headRefName"] or "") or TICKET.search(p.get("bodyText") or "")
@@ -151,7 +168,11 @@ for repo in REPOS:
             extra=f'adr={int(adr)} lines={p["additions"]}+/{p["deletions"]}-' + (f' unpriced={"+".join(sorted(pun))}' if pun else ""),
             tokens_in=tk["in"] or "", tokens_out=tk["out"] or "", cache_read=tk["cr"] or "", cache_write=tk["cw"] or "", cost_usd=round(pcost, 3) if tk["out"] else "",
             models="|".join(f"{m}:{u['out']}:{cost_of(m, u)[0]:.3f}" for m, u in sorted(BR.get(p["headRefName"], {}).items(), key=lambda x: -x[1]["out"])),
-            human_touches=human, reverted=int(bool(re.match(r"\s*revert", p["title"] or "", re.I))), first_pass=int(ci[0] > 0 and ci[2] == 0), ticket=tmatch.group(0) if tmatch else "")
+            human_touches=human, reverted=int(bool(re.match(r"\s*revert", p["title"] or "", re.I))), first_pass=int(ci[0] > 0 and ci[2] == 0), ticket=tmatch.group(0) if tmatch else "", stellar_found=len(set(sf) | sres) if srounds else "", stellar_open=len(sopen & set(sf)) if srounds else "", stellar_rounds=srounds or "", deferrals=ndef, stellar_resolved=len(sres - set(sf)) if srounds else "")
+        for fid, f in sf.items():
+            st = "RESOLVED" if fid not in sopen else ("OPEN_AT_MERGE" if p["state"] == "MERGED" else "OPEN")
+            add(pid, record_type="finding", id=f'{repo}#{p["number"]}:{fid}', repo=repo, title=f'{f["path"]} \u2014 {f["text"]}', state=st, created_at=f["at"], start_at=f["at"], tz=TZ.get(pid, ""),
+                area_primary=area_of(f["path"]), files=1, comments=f["seen"], labels=f'{f["sev"]}|{f["cat"]}|{f["rule"]}', url=f'{gh_url(repo)}/pull/{p["number"]}', extra=f'pr={repo}#{p["number"]}')
 
 # ---------- tickets
 PATH = re.compile(r"[A-Za-z0-9_./-]+\.(?:rs|toml|yml|md)\b")
