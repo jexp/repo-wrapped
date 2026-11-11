@@ -14,6 +14,7 @@ open "index.html?out=myrepo"
 `update.py` flags: `--full` refetch everything, `--only git,prs,runs,linear,sessions,build`.
 
 ## Config (`configs/<name>.json`)
+- `title` (optional): shown in the page header and tab; defaults to `name`. The page can't read the config file itself (browsers block `file://` fetches), so the build copies the title and repo list into `bundle.js`; clone paths, pricing and team ids are never copied
 - `repos[]`: `name`, `github` (owner/repo), `clone` (local path), `refs` (git log refs, e.g. `["origin/main"]` or `["--all"]`)
 - `persons`: file mapping person id to git names/emails, GitHub logins, Linear names, `sessions: true` for the person whose Claude transcripts are on this machine
 - `linear`: `{team, workspace}` or `null`

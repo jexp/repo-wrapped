@@ -25,7 +25,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:4px 8px;t
 .box small{display:block;opacity:.9}
 input[type=file]{color:var(--mute)}
 </style></head><body>
-<header><h1>Repo Wrapped</h1><div class="sub" id="sub">Pick one or more people. Data = long-format CSV per person (commits, PRs, tickets, CI runs, agent sessions).</div></header>
+<header><h1>Repo Wrapped</h1><div class="sub" id="sub0"></div><div class="sub" id="sub">Pick one or more people. Data = long-format CSV per person (commits, PRs, tickets, CI runs, agent sessions).</div></header>
 <main>
 <div class="bar" id="people"></div>
 <div class="bar"><label class="sub">Add CSV(s): <input type="file" id="file" accept=".csv" multiple></label><span class="sub" id="status"></span></div>
@@ -162,6 +162,6 @@ function add(p,text,name){state.rows[p]=parseCSV(text);state.names[p]=name||p;st
 function boot(){const M=window.WRAPPED_MANIFEST||{},D=window.WRAPPED_DATA||{};Object.keys(D).forEach(p=>add(p,D[p],(M[p]||{}).name));if(!Object.keys(state.rows).length)$("status").textContent="No bundle found: use the file picker with data/*.csv";[...state.sel].slice(1).forEach(p=>state.sel.delete(p));chips();render()}
 $("file").onchange=async e=>{for(const f of e.target.files){add(f.name.replace(/\.csv$/,""),await f.text())}chips();render()};
 (function(){const q=new URLSearchParams(location.search).get("out")||"";if(!q){$("status").textContent="Add ?out=<name> (see README) or pick CSVs below";boot();return}const sc=document.createElement("script");sc.src="out/"+q+"/data/bundle.js";
-sc.onload=()=>{if(window.WRAPPED_AREAS)AREAS=window.WRAPPED_AREAS.map(g=>[g[0],g[1],g[2]]);document.querySelector("h1").textContent=(window.WRAPPED_TITLE||q)+" Wrapped";boot()};
+sc.onload=()=>{if(window.WRAPPED_AREAS)AREAS=window.WRAPPED_AREAS.map(g=>[g[0],g[1],g[2]]);document.querySelector("h1").textContent=(window.WRAPPED_TITLE||q)+" Wrapped";if(window.WRAPPED_REPOS){const r=window.WRAPPED_REPOS.map(x=>`<a href="https://github.com/${x.github}" target="_blank" style="color:var(--e)">${x.github}</a>`).join(" · ");document.title=(window.WRAPPED_TITLE||q)+" Wrapped";$("sub0").innerHTML="Repos: "+r}boot()};
 sc.onerror=()=>{$("status").textContent="No out/"+q+"/data/bundle.js — run scripts/update.py --config configs/"+q+".json, or pick CSVs below";boot()};document.body.appendChild(sc)})();
 </script></body></html>
