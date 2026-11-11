@@ -5,7 +5,7 @@
 :root{--bg:#0f1220;--card:#181c30;--ink:#eef0ff;--mute:#9aa0c4;--a:#7c5cff;--b:#22d3a6;--c:#ffb454;--d:#ff6b8b;--e:#4cc3ff;--grid:#2a2f4d}
 @media (prefers-color-scheme:light){:root{--bg:#f4f5fb;--card:#fff;--ink:#14172b;--mute:#5c6287;--grid:#dde0f0}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
-header{padding:28px 16px 8px;max-width:1200px;margin:auto}
+.hd{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:flex-start}header{padding:28px 16px 8px;max-width:1200px;margin:auto}.badge{background:var(--card);border-radius:14px;padding:12px 16px;text-align:right;min-width:260px;border:1px solid var(--grid)}.badge .r{font-size:20px;font-weight:700;letter-spacing:-.01em}.badge .s{color:var(--mute);font-size:12px;margin-top:2px}.badge .n{font-size:13px;margin-top:6px}@media(max-width:600px){.badge{text-align:left;width:100%}}
 h1{font-size:44px;margin:0;background:linear-gradient(90deg,var(--a),var(--b),var(--c));-webkit-background-clip:text;background-clip:text;color:transparent}
 .sub{color:var(--mute)}main{max-width:1200px;margin:auto;padding:0 16px 60px}
 .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0}
@@ -25,7 +25,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:4px 8px;t
 .box small{display:block;opacity:.9}
 input[type=file]{color:var(--mute)}
 </style></head><body>
-<header><h1>Repo Wrapped</h1><div class="sub" id="sub0"></div><div class="sub" id="sub">Pick one or more people. Data = long-format CSV per person (commits, PRs, tickets, CI runs, agent sessions).</div></header>
+<header><div class="hd"><div><h1>Repo Wrapped</h1><div class="sub" id="sub0"></div></div><div id="badge" class="badge"></div></div><div id="sub" style="display:none"></div><div id="cover" style="display:none"></div></header>
 <main>
 <div class="bar" id="people"></div>
 <div class="bar"><label class="sub">Add CSV(s): <input type="file" id="file" accept=".csv" multiple></label><span class="sub" id="status"></span></div>
@@ -82,7 +82,9 @@ function fmt(n){n=+n;return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e4?(n/1e3).toFixed
 function sumBy(rows,types,ms,fn,f){const o=ms.map(()=>0);const ix=Object.fromEntries(ms.map((m,i)=>[m,i]));rows.forEach(r=>{if(!types.includes(r.record_type))return;const d=local(r,f);if(!d)return;const i=ix[month(d)];if(i!=null)o[i]+=fn(r)});return o}
 function median(a){if(!a.length)return 0;a=[...a].sort((x,y)=>x-y);return a[Math.floor(a.length/2)]}
 
-function render(){const rows=selRows();const names=[...state.sel].map(p=>state.names[p]||p).join(", ")||"nobody";$("sub").textContent=names+" · "+rows.length.toLocaleString()+" records";
+function render(){const rows=selRows();const names=[...state.sel].map(p=>state.names[p]||p).join(", ")||"nobody";$("sub").textContent=names+" · "+rows.length.toLocaleString()+" records";{let lo=null,hi=null;rows.forEach(r=>{[r.start_at||r.created_at,r.end_at||r.start_at].forEach(v=>{const d=v?new Date(v):null;if(!d||isNaN(d))return;if(!lo||d<lo)lo=d;if(!hi||d>hi)hi=d})});const f=d=>d.toISOString().slice(0,10);
+const who=[...state.sel].map(p=>((state.names[p]||p).split(" ")[0]).toLowerCase()).join(", ")||"nobody";
+$("badge").innerHTML=lo?`<div class="s">covered</div><div class="r">${f(lo)} &rarr; ${f(hi)}</div><div class="s">${Math.round((hi-lo)/864e5)+1} days${window.WRAPPED_GENERATED?" · pulled "+window.WRAPPED_GENERATED.replace("T"," ")+" UTC":""}</div><div class="n">${who} &middot; ${rows.length.toLocaleString()} records</div>`:`<div class="n">${who} &middot; ${rows.length.toLocaleString()} records</div>`}
 const by=t=>rows.filter(r=>r.record_type==t);const commits=by("commit"),prs=by("pr"),tix=by("ticket"),ci=by("ci_run"),ses=by("session");
 const mp=prs.filter(r=>r.state=="MERGED");const sum=(a,k)=>a.reduce((s,r)=>s+num(r[k]),0);
 const stats=[["Commits",commits.length],["PRs",prs.length],["Tickets",tix.length],["Prod lines + (merged PRs)",sum(mp,"prod_add")],["Prod lines −",sum(mp,"prod_del")],["Test lines +",sum(mp,"test_add")],["CI runs",ci.length],["CI hours",sum(ci,"ci_minutes")/60],["Agent commits",sum(commits,"agent_commits")],["Claude prompts",sum(ses,"agent_prompts")],["Claude tool calls",sum(ses,"agent_tool_calls")],["Comments",sum(prs,"comments")+sum(tix,"comments")]];
