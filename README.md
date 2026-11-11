@@ -25,6 +25,6 @@ open "index.html?out=myrepo"
 `scripts/` pull + build, `configs/` per-repo config (keep private ones in `private/`, gitignored), `out/<name>/{raw,data}` generated (gitignored, including every CSV), `index.html` the page.
 
 ## Notes
-- Raw rows are upserted by id, so refreshes never lose history. PR lines are each PR's final diff (scaled when a PR has more than 100 files); commit rows span all branches and double count, so the page uses PRs for lines and person-days.
+- Re-runs are additive and idempotent: each source keeps a watermark from the stored data and upserts by id (PR number, run id, issue id, repo+sha, session id), so history is never lost or duplicated. The CSVs are derived output, rebuilt from `out/<name>/raw` on every run, so add data to the raw files or the sources, not to the CSVs. Known gaps: re-runs of old CI workflows need `--full`; rows deleted upstream are never removed. PR lines are each PR's final diff (scaled when a PR has more than 100 files); commit rows span all branches and double count, so the page uses PRs for lines and person-days.
 - Complexity (1–10) and the person-days rates are heuristics; tune them in `build_csv.py` / the page sliders.
 - Only the machine's own Claude sessions are visible; other people's agent usage shows up as bot comments and agent commit trailers.
