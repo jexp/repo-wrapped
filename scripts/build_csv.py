@@ -8,9 +8,22 @@ from common import RAW as R, DATA as D, PERSONS as persons, REPOS, LINEAR, gh_ur
 from areas import area_of, kind, crate_of, CORE, layout
 COLS = ["record_type","id","person","repo","title","state","created_at","start_at","end_at","duration_hours","tz","area_primary","areas","crates","files",
         "prod_add","prod_del","test_add","test_del","doc_add","doc_del","other_add","other_del","commits","comments","comment_chars","reviews",
-        "agent_comments","agent_commits","agent_prompts","agent_tool_calls","active_minutes","ci_runs","ci_minutes","ci_fail","complexity","labels","url","extra"]
+        "agent_comments","agent_commits","agent_prompts","agent_tool_calls","active_minutes","ci_runs","ci_minutes","ci_fail","complexity","labels","url","extra","tokens_in","tokens_out","cache_read","cache_write","cost_usd","models","human_touches","reverted","first_pass","ticket"]
 BOT = re.compile(r"(\[bot\]$|^app/|^copilot|^cursor|^stellar|^github-actions|^release-bot|bot$)", re.I)
 
+PRICING = {k: v for k, v in (CFG.get("pricing") or {}).items() if not k.startswith("_")}
+def cost_of(model, u):
+    pr = PRICING.get(model)
+    if not pr: return 0.0, model
+    i = pr["in"]; return (u.get("in", 0) * i + u.get("out", 0) * pr["out"] + u.get("cr", 0) * pr.get("cr", i * 0.1) + u.get("cw", 0) * pr.get("cw", i * 1.25)) / 1e6, None
+def tally(models):
+    """models: {model: {msgs,in,out,cr,cw}} -> (tokens dict, cost, unpriced set)"""
+    t = collections.Counter(); cost = 0.0; un = set()
+    for m, u in models.items():
+        c, bad = cost_of(m, u); cost += c
+        if bad: un.add(bad)
+        for k in ("in", "out", "cr", "cw"): t[k] += u.get(k, 0)
+    return t, cost, un
 def jl(p):
     return [json.loads(l) for l in open(R + p)] if os.path.exists(R + p) else []
 def P(s): return dt.datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
@@ -20,6 +33,13 @@ def complexity(prod, test, nareas, ncrates, core, discuss, adr):
     churn = prod[0] + prod[1] * 0.5 + test[0] * 0.5 + test[1] * 0.25
     raw = math.log2(1 + churn) + 1.6 * math.log2(1 + nareas) + (1.5 if core else 0) + math.log2(1 + ncrates) + 0.7 * math.log2(1 + discuss) + (1.5 if adr else 0)
     return round(max(1.0, min(10.0, raw / 2.6)), 2)
+
+# session spend per git branch (for cost per PR)
+BR = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
+for _s in jl("sessions.jsonl"):
+    for br, ms in _s.get("by_branch", {}).items():
+        for m, u in ms.items(): BR[br][m].update(u)
+TICKET = re.compile(r"\b[A-Z]{2,6}-\d+\b")
 
 # ---------- identity
 by_gh, by_git, by_lin = {}, {}, {}
@@ -116,6 +136,9 @@ for repo in REPOS:
         cx = complexity((s["prod_add"], s["prod_del"]), (s["test_add"], s["test_del"]), len(areas), len(crates), any(a in CORE for a in areas),
                         p["comments"]["totalCount"] + p["reviews"]["totalCount"], adr)
         pr_info[(repo, p["number"])] = {"areas": areas, "cx": cx, "s": s}
+        tk, pcost, pun = tally(BR.get(p["headRefName"], {}))
+        human = sum(1 for c in cm if not BOT.search((c["author"] or {}).get("login") or "ghost")) + sum(1 for r in rv if not BOT.search((r["author"] or {}).get("login") or "ghost"))
+        tmatch = TICKET.search(p["title"] or "") or TICKET.search(p["headRefName"] or "") or TICKET.search(p.get("bodyText") or "")
         if not pid: continue
         add(pid, record_type="pr", id=f'{repo}#{p["number"]}', repo=repo, title=p["title"][:200], state=("DRAFT" if p["isDraft"] and p["state"] == "OPEN" else p["state"]),
             created_at=p["createdAt"], start_at=p["createdAt"], end_at=end or "", duration_hours=hours(p["createdAt"], end) if end else "", tz=TZ.get(pid, ""),
@@ -125,7 +148,10 @@ for repo in REPOS:
             agent_comments=bot_c + bot_r, ci_runs=ci[0], ci_minutes=round(ci[1], 2), ci_fail=ci[2], complexity=cx,
             labels="|".join(l["name"] for l in p["labels"]["nodes"]),
             url=f'{gh_url(repo)}/pull/{p["number"]}',
-            extra=f'adr={int(adr)} lines={p["additions"]}+/{p["deletions"]}-')
+            extra=f'adr={int(adr)} lines={p["additions"]}+/{p["deletions"]}-' + (f' unpriced={"+".join(sorted(pun))}' if pun else ""),
+            tokens_in=tk["in"] or "", tokens_out=tk["out"] or "", cache_read=tk["cr"] or "", cache_write=tk["cw"] or "", cost_usd=round(pcost, 3) if tk["out"] else "",
+            models="|".join(f"{m}:{u['out']}:{cost_of(m, u)[0]:.3f}" for m, u in sorted(BR.get(p["headRefName"], {}).items(), key=lambda x: -x[1]["out"])),
+            human_touches=human, reverted=int(bool(re.match(r"\s*revert", p["title"] or "", re.I))), first_pass=int(ci[0] > 0 and ci[2] == 0), ticket=tmatch.group(0) if tmatch else "")
 
 # ---------- tickets
 PATH = re.compile(r"[A-Za-z0-9_./-]+\.(?:rs|toml|yml|md)\b")
@@ -161,9 +187,12 @@ for t in (jl("linear-issues.jsonl") if LINEAR else []):
 for s in jl("sessions.jsonl"):
     pid = next((k for k, v in persons.items() if v.get("sessions")), None)
     if not pid: continue
+    stk, scost, sun = tally(s["models"])
     add(pid, record_type="session", id=s["session"][:12], repo="claude-code", title=s["project"], state="SESSION", created_at=s["start"], start_at=s["start"], end_at=s["end"],
         duration_hours=hours(s["start"], s["end"]), tz=TZ.get(pid, ""), agent_prompts=s["prompts"], agent_tool_calls=s["tool_calls"], active_minutes=s["active_min"],
-        extra=f'subagents={s["subagents"]}')
+        extra=f'subagents={s["subagents"]}' + (f' unpriced={"+".join(sorted(sun))}' if sun else ""),
+        tokens_in=stk["in"], tokens_out=stk["out"], cache_read=stk["cr"], cache_write=stk["cw"], cost_usd=round(scost, 3),
+        models="|".join(f"{m}:{u['out']}:{cost_of(m, u)[0]:.3f}" for m, u in sorted(s["models"].items(), key=lambda x: -x[1]["out"])))
 
 # ---------- write
 os.makedirs(D, exist_ok=True)

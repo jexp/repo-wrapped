@@ -41,6 +41,16 @@ input[type=file]{color:var(--mute)}
 <div class="card"><h2>PR lead time</h2><p>Hours from open to merge (median per month)</p><div id="lead"></div></div>
 <div class="card"><h2>Tickets opened vs closed</h2><p>Linear issues per month</p><div id="tix"></div></div>
 <div class="card"><h2>Biggest PRs</h2><p>By complexity, then lines</p><div id="top"></div></div>
+<div class="card wide"><h2>Factory metrics</h2><p>The measures a software-factory dashboard tracks: throughput, automation, quality, cost. Each is computed from the same CSVs.</p></div>
+<div class="card"><h2>Throughput</h2><p>Merged PRs per week; trend = last 4 weeks vs the 4 before</p><div id="thru"></div></div>
+<div class="card"><h2>Automation: human touches per merged PR</h2><p>Non-bot comments and reviews per merged PR; line = share of PRs with zero human touches</p><div id="auto"></div></div>
+<div class="card"><h2>Quality loop</h2><p>CI first-pass rate (green with no failed run) and revert rate of merged PRs, per month</p><div id="qual"></div></div>
+<div class="card"><h2>Cost per PR</h2><p>Estimated agent spend per merged PR (sessions joined by branch); bars = mean, line = median. Prices in config; unpriced models count as 0</p><div id="cpr"></div></div>
+<div class="card"><h2>Spend by model</h2><p>Estimated USD from agent sessions, all work</p><div id="smodel"></div></div>
+<div class="card"><h2>Cost vs first-pass rate by model</h2><p>Per PR's dominant model: mean cost per PR (x) against CI first-pass rate (y). Top-left is best. Bubble = PRs</p><div id="scat"></div></div>
+<div class="card"><h2>Cost by area</h2><p>Mean cost per costed PR by primary area (where in the system the money goes)</p><div id="carea"></div></div>
+<div class="card"><h2>Entry points and autonomy</h2><p>Share of PRs traceable to a ticket (bars) and tool calls per human prompt (line)</p><div id="entry"></div></div>
+<div class="card"><h2>Scorer proxies</h2><p>Test lines per prod line (redundant-test proxy), bot comments per PR (verbosity proxy), CI failure rate</p><div id="scor"></div></div>
 <div class="card wide"><h2>Equivalent person-days by hand</h2><p>Hand-written Rust estimate, production and test separated. Adjust the rates.</p>
 <div class="sl"><span>Prod lines / day</span><input id="rp" type="range" min="20" max="300" value="80"><b id="vp">80</b></div>
 <div class="sl"><span>Test lines / day</span><input id="rt" type="range" min="40" max="600" value="160"><b id="vt">160</b></div>
@@ -100,7 +110,48 @@ $("arch").innerHTML=AREAS.map(([t,g,items])=>`<div class="grp"><b>${t}</b><div c
 {const ms=months(tix,"created_at");stackedBars($("tix"),ms,[{name:"opened",data:sumBy(rows,["ticket"],ms,()=>1,"created_at"),color:COLORS[0]},{name:"done",data:ms.map(m=>tix.filter(r=>r.state=="Done"&&r.end_at&&month(new Date(r.end_at))==m).length),color:COLORS[1]}])}
 // top
 {const t=[...prs].sort((a,b)=>num(b.complexity)-num(a.complexity)||num(b.prod_add)-num(a.prod_add)).slice(0,8);$("top").innerHTML="<table><tr><th>PR</th><th>cx</th><th>prod+</th><th>test+</th></tr>"+t.map(r=>`<tr><td><a href="${r.url}" style="color:var(--e)" target="_blank">${r.id}</a> ${(r.title||"").slice(0,48)}</td><td>${r.complexity}</td><td>${fmt(num(r.prod_add))}</td><td>${fmt(num(r.test_add))}</td></tr>`).join("")+"</table>"}
-days(mp)}
+factory(rows);days(mp)}
+
+function lineChart(el,ms,series,pct){const W=560,H=210,L=40,B=26,T=10;if(!ms.length){el.innerHTML="<p>no data</p>";return}const mx=Math.max(pct?1:0,1e-9,...series.flatMap(s=>s.data.map(v=>v||0)));const bw=(W-L)/ms.length;let g="";
+for(let k=0;k<=4;k++){const y=T+(H-T-B)*(1-k/4);g+=`<line x1="${L}" x2="${W}" y1="${y}" y2="${y}" stroke="var(--grid)"/><text x="${L-4}" y="${y+3}" text-anchor="end">${pct?Math.round(100*mx*k/4)+"%":fmt(mx*k/4)}</text>`}
+ms.forEach((m,i)=>{if(i%Math.ceil(ms.length/10)==0)g+=`<text x="${L+i*bw}" y="${H-8}">${m.slice(2)}</text>`});
+series.forEach((s,j)=>{const pts=ms.map((m,i)=>s.data[i]==null?null:`${L+i*bw+bw/2},${T+(H-T-B)*(1-(s.data[i]||0)/mx)}`).filter(Boolean).join(" ");g+=`<polyline points="${pts}" fill="none" stroke="${s.color||COLORS[j]}" stroke-width="2"/>`;ms.forEach((m,i)=>{if(s.data[i]!=null)g+=`<circle cx="${L+i*bw+bw/2}" cy="${T+(H-T-B)*(1-(s.data[i]||0)/mx)}" r="2.5" fill="${s.color||COLORS[j]}"><title>${m} ${s.name}: ${pct?(100*s.data[i]).toFixed(0)+"%":fmt(s.data[i])}</title></circle>`})});
+el.innerHTML=svgWrap(W,H,g)+`<div class="legend">${series.map((s,j)=>`<span><i style="background:${s.color||COLORS[j]}"></i>${s.name}</span>`).join("")}</div>`}
+function hbars(el,items,unit){const W=560,rh=22,H=items.length*rh+8,mx=Math.max(1e-9,...items.map(i=>i[1]));let g="";items.forEach(([n,v,extra],i)=>{const w=(W-250)*v/mx;g+=`<text x="4" y="${i*rh+16}">${n.slice(0,26)}</text><rect x="170" y="${i*rh+4}" width="${Math.max(1,w)}" height="${rh-8}" rx="3" fill="${COLORS[i%COLORS.length]}"/><text x="${176+w}" y="${i*rh+16}">${unit}${fmt(v)}${extra?" · "+extra:""}</text>`});el.innerHTML=items.length?svgWrap(W,H,g):"<p>no cost data (needs sessions + pricing)</p>"}
+function factory(rows){const prs=rows.filter(r=>r.record_type=="pr"),mp=prs.filter(r=>r.state=="MERGED"),ses=rows.filter(r=>r.record_type=="session");
+const wk=d=>{const x=new Date(d);x.setUTCHours(0,0,0,0);x.setUTCDate(x.getUTCDate()-((x.getUTCDay()+6)%7));return x.toISOString().slice(0,10)};
+// throughput weekly
+{const c={};mp.forEach(r=>{if(r.end_at){const k=wk(r.end_at);c[k]=(c[k]||0)+1}});const ks=Object.keys(c).sort();const full=[];if(ks.length){let d=new Date(ks[0]);const e=new Date(ks[ks.length-1]);while(d<=e){full.push(d.toISOString().slice(0,10));d=new Date(d.getTime()+7*864e5)}}
+const data=full.map(k=>c[k]||0);const a=data.slice(-4).reduce((x,y)=>x+y,0),b=data.slice(-8,-4).reduce((x,y)=>x+y,0);const tr=b?((a-b)/b*100).toFixed(0)+"%":"n/a";
+stackedBars($("thru"),full,[{name:`PRs merged/week (trend ${tr})`,data,color:COLORS[0]}])}
+// automation
+{const ms=months(mp,"end_at");const ix=Object.fromEntries(ms.map((m,i)=>[m,i]));const t=ms.map(()=>[]);mp.forEach(r=>{if(!r.end_at)return;const i=ix[month(new Date(r.end_at))];if(i!=null)t[i].push(num(r.human_touches))});
+lineChart($("auto"),ms,[{name:"mean human touches / PR",data:t.map(a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null),color:COLORS[2]}]);
+const z=ms.map((m,i)=>t[i].length?t[i].filter(v=>v==0).length/t[i].length:null);$("auto").insertAdjacentHTML("beforeend",`<div class="legend"><span>zero-touch share by month: ${z.map((v,i)=>v==null?"":ms[i].slice(2)+" "+Math.round(v*100)+"%").filter(Boolean).join(" · ")}</span></div>`)}
+// quality
+{const ms=months(mp,"end_at");const ix=Object.fromEntries(ms.map((m,i)=>[m,i]));const fp=ms.map(()=>[0,0]),rv=ms.map(()=>[0,0]);mp.forEach(r=>{if(!r.end_at)return;const i=ix[month(new Date(r.end_at))];if(i==null)return;if(num(r.ci_runs)>0){fp[i][1]++;fp[i][0]+=num(r.first_pass)}rv[i][1]++;rv[i][0]+=num(r.reverted)});
+lineChart($("qual"),ms,[{name:"CI first-pass rate",data:fp.map(x=>x[1]?x[0]/x[1]:null),color:COLORS[1]},{name:"revert rate",data:rv.map(x=>x[1]?x[0]/x[1]:null),color:COLORS[3]}],true)}
+// cost per PR
+const costed=mp.filter(r=>r.cost_usd!=="");
+{const ms=months(costed,"end_at");const ix=Object.fromEntries(ms.map((m,i)=>[m,i]));const t=ms.map(()=>[]);costed.forEach(r=>{if(!r.end_at)return;const i=ix[month(new Date(r.end_at))];if(i!=null)t[i].push(num(r.cost_usd))});
+stackedBars($("cpr"),ms,[{name:"mean $ / PR",data:t.map(a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0),color:COLORS[0]}],{line:{name:"median $",data:t.map(median)}});
+const all=costed.map(r=>num(r.cost_usd));$("cpr").insertAdjacentHTML("beforeend",`<div class="legend"><span>${costed.length} merged PRs have session cost · median $${median(all).toFixed(2)} · mean $${(all.reduce((a,b)=>a+b,0)/Math.max(1,all.length)).toFixed(2)}</span></div>`)}
+// spend by model
+{const m={},tot={};ses.forEach(r=>(r.models||"").split("|").filter(Boolean).forEach(x=>{const [n,o,c]=x.split(":");m[n]=(m[n]||0)+ +c;tot[n]=(tot[n]||0)+ +o}));hbars($("smodel"),Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([n,v])=>[n,v,fmt(tot[n])+" out tok"]),"$")}
+// scatter: cost vs first-pass by dominant model
+{const g={};costed.forEach(r=>{const dm=((r.models||"").split("|")[0]||"").split(":")[0];if(!dm)return;const o=g[dm]||(g[dm]={c:0,n:0,f:0,fn:0});o.c+=num(r.cost_usd);o.n++;if(num(r.ci_runs)>0){o.fn++;o.f+=num(r.first_pass)}});
+const E=Object.entries(g).filter(([k,o])=>o.fn>0);const W=560,H=240,L=44,B=28,T=10;if(!E.length)$("scat").innerHTML="<p>no data</p>";else{const mxc=Math.max(...E.map(([k,o])=>o.c/o.n))*1.15||1;let s="";for(let k=0;k<=4;k++){const y=T+(H-T-B)*(1-k/4);s+=`<line x1="${L}" x2="${W}" y1="${y}" y2="${y}" stroke="var(--grid)"/><text x="${L-4}" y="${y+3}" text-anchor="end">${k*25}%</text>`;s+=`<text x="${L+(W-L-20)*k/4}" y="${H-10}">$${(mxc*k/4).toFixed(1)}</text>`}
+E.forEach(([k,o],i)=>{const x=L+(W-L-20)*(o.c/o.n)/mxc,y=T+(H-T-B)*(1-o.f/o.fn);s+=`<circle cx="${x}" cy="${y}" r="${5+Math.sqrt(o.n)*2}" fill="${COLORS[i%COLORS.length]}" fill-opacity=".7"><title>${k}: ${o.n} PRs, $${(o.c/o.n).toFixed(2)}/PR, ${(100*o.f/o.fn).toFixed(0)}% first-pass</title></circle><text x="${x+8}" y="${y-8}">${k}</text>`});$("scat").innerHTML=svgWrap(W,H,s)}}
+// cost by area
+{const g={};costed.forEach(r=>{const a=r.area_primary||"other";(g[a]=g[a]||[]).push(num(r.cost_usd))});hbars($("carea"),Object.entries(g).filter(([k,a])=>a.length>=2).map(([k,a])=>[k,a.reduce((x,y)=>x+y,0)/a.length,a.length+" PRs"]).sort((a,b)=>b[1]-a[1]).slice(0,10),"$")}
+// entry points + autonomy
+{const ms=months(mp,"end_at");const ix=Object.fromEntries(ms.map((m,i)=>[m,i]));const tk=ms.map(()=>0),no=ms.map(()=>0);mp.forEach(r=>{if(!r.end_at)return;const i=ix[month(new Date(r.end_at))];if(i==null)return;r.ticket?tk[i]++:no[i]++});
+const a=ms.map(()=>[0,0]);ses.forEach(r=>{const d=local(r,"start_at");if(!d)return;const i=ix[month(d)];if(i==null||!num(r.agent_prompts))return;a[i][0]+=num(r.agent_tool_calls);a[i][1]+=num(r.agent_prompts)});
+stackedBars($("entry"),ms,[{name:"PRs with ticket",data:tk,color:COLORS[1]},{name:"no ticket",data:no,color:COLORS[5]}],{line:{name:"tool calls per prompt",data:a.map(x=>x[1]?x[0]/x[1]:0)}})}
+// scorer proxies
+{const ms=months(mp,"end_at");const ix=Object.fromEntries(ms.map((m,i)=>[m,i]));const o=ms.map(()=>({p:0,t:0,b:0,n:0,f:0,c:0}));mp.forEach(r=>{if(!r.end_at)return;const i=ix[month(new Date(r.end_at))];if(i==null)return;const x=o[i];x.p+=num(r.prod_add);x.t+=num(r.test_add);x.b+=num(r.agent_comments);x.n++;if(num(r.ci_runs)>0){x.c++;x.f+=1-num(r.first_pass)}});
+lineChart($("scor"),ms,[{name:"test lines / prod line",data:o.map(x=>x.p?x.t/x.p:null),color:COLORS[0]},{name:"bot comments / PR",data:o.map(x=>x.n?x.b/x.n:null),color:COLORS[2]},{name:"CI failure rate",data:o.map(x=>x.c?x.f/x.c:null),color:COLORS[3]}])}
+}
 function days(commits){/* merged PRs */const rp=+$("rp").value,rt=+$("rt").value,rc=+$("rc").value/100;$("vp").textContent=rp;$("vt").textContent=rt;$("vc").textContent=rc.toFixed(2);
 let dp=0,dt=0,dd=0,pa=0,pd=0,ta=0,td=0,da=0,dl=0;commits.forEach(r=>{const k=1+rc*(num(r.complexity)-5)/5;pa+=num(r.prod_add);pd+=num(r.prod_del);ta+=num(r.test_add);td+=num(r.test_del);da+=num(r.doc_add);dl+=num(r.doc_del);dp+=(num(r.prod_add)+.5*num(r.prod_del))/rp*k;dt+=(num(r.test_add)+.5*num(r.test_del))/rt*k;dd+=(num(r.doc_add))/400});
 const yrs=(dp+dt)/220,tot=dp+dt+dd;const row=(n,a,d,v)=>`<tr><td>${n}</td><td>+${fmt(a)}</td><td>&minus;${fmt(d)}</td><td>${fmt(v)}</td><td>${(v/21).toFixed(1)}</td></tr>`;
