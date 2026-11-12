@@ -26,6 +26,7 @@ GH = {n: r["github"] for n, r in REPOS.items()}
 CLONES = {n: r["clone"] for n, r in REPOS.items()}
 LINEAR_TEAM = (LINEAR or {}).get("team")
 OVERLAP = dt.timedelta(days=3)
+SINCE = dt.datetime.fromisoformat(CFG["since"]).replace(tzinfo=dt.timezone.utc) if CFG.get("since") else None   # optional config floor: older PRs/runs are never fetched
 
 def log(*a): print(*a, file=sys.stderr, flush=True)
 def load(path, key):
@@ -72,6 +73,7 @@ def do_prs(full):
         mark = None
         if have and not full:   # rows from before updatedAt existed fall back to their latest timestamp
             mark = max(ts(r.get("updatedAt") or r.get("closedAt") or r.get("mergedAt") or r["createdAt"]) for r in have.values()) - OVERLAP
+        if SINCE and (mark is None or mark < SINCE): mark = SINCE
         cur, got, stop = None, 0, False
         while not stop:
             cmd = ["gh", "api", "graphql", "-f", f"query={PRQ}", "-F", f"o={o}", "-F", f"n={n}"] + (["-F", f"c={cur}"] if cur else [])
@@ -91,6 +93,8 @@ def do_runs(full):
             runs = retry(["gh", "api", f"repos/{slug}/actions/runs?per_page=100&page={page}"], lambda s: json.loads(s)["workflow_runs"])
             if not runs: break
             fresh = 0
+            if SINCE: runs_in = [x for x in runs if ts(x["created_at"]) >= SINCE]; older = len(runs_in) < len(runs); runs = runs_in
+            else: older = False
             for x in runs:
                 row = {"id": x["id"], "name": x["name"], "event": x["event"], "status": x["status"], "conclusion": x["conclusion"], "created_at": x["created_at"],
                        "run_started_at": x.get("run_started_at"), "updated_at": x["updated_at"], "actor": (x.get("triggering_actor") or x.get("actor") or {}).get("login"),
@@ -99,7 +103,7 @@ def do_runs(full):
                 if prev is None or prev.get("status") != "completed" or prev.get("updated_at") != row["updated_at"]: fresh += 1
                 have[x["id"]] = row; got += 1
             log(f"  runs {repo} page {page} (+{fresh} new/changed)"); page += 1
-            if fresh == 0 and not full: break     # a whole page we already had, all completed: older pages unchanged
+            if older or (fresh == 0 and not full): break     # a whole page we already had, all completed: older pages unchanged
         save(path, dict(sorted(have.items()))); log(f"runs {repo}: {got} seen, {len(have)} total")
 
 # ---------- Linear ----------

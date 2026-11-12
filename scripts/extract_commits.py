@@ -2,7 +2,7 @@
 """One row per non-merge commit of both repos (git log --numstat): author, time (with tz), area LOC split, agent co-author flag."""
 import json, subprocess, sys, re
 sys.path.insert(0, ".")
-from common import RAW, REPOS
+from common import RAW, REPOS, CFG
 from areas import area_of, kind
 SEP = "\x1e"
 out = open(RAW + "commits.jsonl", "w")
@@ -10,7 +10,7 @@ seen = set()
 for repo, rc in REPOS.items():
     path = rc["clone"]; refs = rc.get("refs") or ["origin/main"]
     fmt = SEP + "%H%x1f%aN%x1f%aE%x1f%aI%x1f%cI%x1f%s%x1f%b"
-    r = subprocess.run(["git", "-C", path, "log", *refs, "--no-merges", "--numstat", "--format=" + fmt], capture_output=True, text=True)
+    r = subprocess.run(["git", "-C", path, "log", *refs, "--no-merges", "--numstat", *(["--since=" + CFG["since"]] if CFG.get("since") else []), "--format=" + fmt], capture_output=True, text=True)
     for rec in r.stdout.split(SEP)[1:]:
         head, _, stats = rec.partition("\n")
         sha, an, ae, ad, cd, subj, body = (head.split("\x1f") + [""] * 7)[:7]
