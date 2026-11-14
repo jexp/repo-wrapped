@@ -5,7 +5,7 @@ rows are keyed by (record_type, id), so appending/merging more CSV rows later is
 import csv, io, json, math, re, sys, datetime as dt, collections, os
 sys.path.insert(0, os.path.dirname(__file__))
 from common import RAW as R, DATA as D, PERSONS as persons, REPOS, LINEAR, gh_url, CFG
-from areas import area_of, kind, crate_of, CORE, layout
+from areas import area_of, kind, crate_of, CORE, layout, EDGES
 COLS = ["record_type","id","person","repo","title","state","created_at","start_at","end_at","duration_hours","tz","area_primary","areas","crates","files",
         "prod_add","prod_del","test_add","test_del","doc_add","doc_del","other_add","other_del","commits","comments","comment_chars","reviews",
         "agent_comments","agent_commits","agent_prompts","agent_tool_calls","active_minutes","ci_runs","ci_minutes","ci_fail","complexity","labels","url","extra","tokens_in","tokens_out","cache_read","cache_write","cost_usd","models","human_touches","reverted","first_pass","ticket","stellar_found","stellar_open","stellar_rounds","deferrals","stellar_resolved"]
@@ -226,4 +226,4 @@ for pid, rs in rows.items():
 meta = {pid: {"name": persons[pid]["name"], "file": f"{pid}.csv", "tz": TZ.get(pid, "")} for pid in rows}
 json.dump(meta, open(D + "manifest.json", "w"), indent=1)
 seen = set(a for rs in rows.values() for r in rs for a in (r["areas"].split("|") if r["areas"] else []) + ([r["area_primary"]] if r["area_primary"] else []))
-open(D + "bundle.js", "w").write("window.WRAPPED_MANIFEST=" + json.dumps(meta) + ";\nwindow.WRAPPED_AREAS=" + json.dumps(layout(seen)) + ";\nwindow.WRAPPED_TITLE=" + json.dumps(CFG.get("title") or CFG["name"]) + ";\nwindow.WRAPPED_GENERATED=" + json.dumps(dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ")) + ";\nwindow.WRAPPED_REPOS=" + json.dumps([{"name": n, "github": r["github"]} for n, r in REPOS.items()]) + ";\nwindow.WRAPPED_DATA=" + json.dumps(bundle) + ";\n")
+open(D + "bundle.js", "w").write("window.WRAPPED_MANIFEST=" + json.dumps(meta) + ";\nwindow.WRAPPED_AREAS=" + json.dumps(layout(seen)) + ";\nwindow.WRAPPED_EDGES=" + json.dumps(EDGES) + ";\nwindow.WRAPPED_TITLE=" + json.dumps(CFG.get("title") or CFG["name"]) + ";\nwindow.WRAPPED_GENERATED=" + json.dumps(dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ")) + ";\nwindow.WRAPPED_REPOS=" + json.dumps([{"name": n, "github": r["github"]} for n, r in REPOS.items()]) + ";\nwindow.WRAPPED_DATA=" + json.dumps(bundle) + ";\n")

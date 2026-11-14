@@ -29,3 +29,7 @@ open "index.html?out=myrepo"
 - Re-runs are additive and idempotent: each source keeps a watermark from the stored data and upserts by id (PR number, run id, issue id, repo+sha, session id), so history is never lost or duplicated. The CSVs are derived output, rebuilt from `out/<name>/raw` on every run, so add data to the raw files or the sources, not to the CSVs. Known gaps: re-runs of old CI workflows need `--full`; rows deleted upstream are never removed. PR lines are each PR's final diff (scaled when a PR has more than 100 files); commit rows span all branches and double count, so the page uses PRs for lines and person-days.
 - Complexity (1–10) and the person-days rates are heuristics; tune them in `build_csv.py` / the page sliders.
 - Only the machine's own Claude sessions are visible; other people's agent usage shows up as bot comments and agent commit trailers.
+
+## Architecture diagram
+
+An area profile (Python file) may define `EDGES = [(from_area_id, to_area_id), ...]`, or the config may carry `"edges": [[from, to], ...]`. With edges, the page draws the areas as a layered diagram (one row per group, arrows between components) and colours each box by its share of changed lines. Without edges it shows plain grouped boxes. `areas: "maven"` maps Maven/Gradle modules (directory before `src/`) to areas.

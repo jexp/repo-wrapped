@@ -21,7 +21,9 @@ else:
     _p = os.path.join(os.path.dirname(CFG_PATH), PROFILE)
     _s = importlib.util.spec_from_file_location("area_profile", _p); _m = importlib.util.module_from_spec(_s); _s.loader.exec_module(_m)
     AREAS, area_of, crate_of = _m.AREAS, _m.area_of, _m.crate_of; CORE = getattr(_m, "CORE", set())
+    EDGES = getattr(_m, "EDGES", [])
 AREA_IDS = [a[0] for a in AREAS]
+EDGES = globals().get("EDGES") or CFG.get("edges") or []   # [[from_area_id, to_area_id], ...] arrows of the architecture diagram
 
 def is_code(path): return path.endswith(CODE_EXTS)
 def is_test(path):

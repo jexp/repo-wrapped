@@ -67,7 +67,7 @@ input[type=file]{color:var(--mute)}
 </div></main>
 <script>
 const COLORS=["#7c5cff","#22d3a6","#ffb454","#ff6b8b","#4cc3ff","#b0e05a"];
-let AREAS=[];
+let AREAS=[],EDGES=[];
 const state={rows:{},sel:new Set(),names:{},cut:null};
 const $=id=>document.getElementById(id);
 const num=v=>v===""||v==null?0:+v;
@@ -76,6 +76,18 @@ const h=out.shift();return out.filter(r=>r.length>1).map(r=>{const o={};h.forEac
 function tzMin(s){const m=/([+-])(\d\d):?(\d\d)/.exec(s||"+00:00");return m?(m[1]=="-"?-1:1)*(+m[2]*60+ +m[3]):0}
 function local(r,field){const s=r[field||"start_at"];if(!s)return null;const d=new Date(s);if(isNaN(d))return null;return new Date(d.getTime()+tzMin(r.tz)*60000)}
 const month=d=>d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");
+function archSVG(groups,tot,cnt,mx,edges){const W=178,H=58,GX=16,GY=46,P=10,pos={};const wrap=t=>{const w=t.split(" "),o=[""];w.forEach(x=>{if((o[o.length-1]+" "+x).trim().length>24&&o[o.length-1])o.push(x);else o[o.length-1]=(o[o.length-1]+" "+x).trim()});return o.slice(0,2)};
+const cols=Math.max(...groups.map(g=>g[2].length)),TW=cols*(W+GX)-GX+2*P,lab=[];let y=P;
+const rows=groups.map(([t,g,items])=>{const rw=items.length*(W+GX)-GX,x0=(TW-rw)/2,r={t,y,items:items.map(([id,l],i)=>{const n={id,l,x:x0+i*(W+GX),y,i,row:groups.findIndex(q=>q[1]==g)};pos[id]=n;return n})};y+=H+GY;return r});
+const TH=y-GY+P;let e="";
+edges.forEach(([a,b])=>{const s=pos[a],t=pos[b];if(!s||!t)return;let d;
+if(s.row==t.row){if(Math.abs(s.i-t.i)==1){const l=s.i<t.i,x1=l?s.x+W:s.x,x2=l?t.x:t.x+W,yy=s.y+H/2;d=`M${x1},${yy}L${x2},${yy}`}else{const x1=s.x+W/2,x2=t.x+W/2,top=s.y-22;d=`M${x1},${s.y}C${x1},${top} ${x2},${top} ${x2},${t.y}`}}
+else{const down=t.row>s.row,x1=s.x+W/2,x2=t.x+W/2,y1=down?s.y+H:s.y,y2=down?t.y:t.y+H,m=(y1+y2)/2;d=`M${x1},${y1}C${x1},${m} ${x2},${m} ${x2},${y2}`}
+e+=`<path d="${d}" fill="none" stroke="var(--mute)" stroke-opacity=".55" stroke-width="1.4" marker-end="url(#ah)"/>`});
+let nodes="";rows.forEach(r=>r.items.forEach(n=>{const v=tot[n.id]||0,a=Math.sqrt(v/mx),L=wrap(n.l),light=a<.3;
+nodes+=`<g><title>${n.id}: ${fmt(v)} lines, ${cnt[n.id]||0} commits</title><rect x="${n.x}" y="${n.y}" width="${W}" height="${H}" rx="9" style="fill:color-mix(in srgb,var(--a) ${Math.round(8+92*a)}%,var(--card))" stroke="var(--grid)"/>`+L.map((t,i)=>`<text x="${n.x+W/2}" y="${n.y+(L.length>1?17:23)+i*14}" text-anchor="middle" font-size="12" font-weight="600" style="fill:${light?"var(--ink)":"#fff"}">${t}</text>`).join("")+`<text x="${n.x+W/2}" y="${n.y+H-8}" text-anchor="middle" font-size="10" style="fill:${light?"var(--mute)":"#ffffffcc"}">${fmt(v)} lines · ${cnt[n.id]||0} commits</text></g>`}));
+const gl=rows.map(r=>`<text x="2" y="${r.y-6}" font-size="10" style="fill:var(--mute)">${r.t.toUpperCase()}</text>`).join("");
+return `<svg viewBox="0 -8 ${TW} ${TH+8}" style="width:100%;height:auto"><defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L8,4L0,8z" style="fill:var(--mute)" fill-opacity=".8"/></marker></defs>${gl}${e}${nodes}</svg>`}
 function svgWrap(w,h,inner){return `<svg viewBox="0 0 ${w} ${h}">${inner}</svg>`}
 const rowDate=r=>{const v=r.start_at||r.created_at,d=v?new Date(v):null;return d&&!isNaN(d)?d:null};
 function allSel(){let a=[];for(const p of state.sel)a=a.concat(state.rows[p]||[]);return a}
@@ -115,7 +127,7 @@ g.forEach((r,i)=>r.forEach((v,h)=>{const a=v/mx;s+=`<rect x="${60+h*cw}" y="${20
 {const ms=months(ci,"start_at");const ok=sumBy(ci,["ci_run"],ms,r=>1-num(r.ci_fail),"start_at"),bad=sumBy(ci,["ci_run"],ms,r=>num(r.ci_fail),"start_at"),h=sumBy(ci,["ci_run"],ms,r=>num(r.ci_minutes)/60,"start_at");stackedBars($("ci"),ms,[{name:"passed",data:ok,color:COLORS[1]},{name:"failed",data:bad,color:COLORS[3]}],{line:{name:"runner hours",data:h}})}
 // arch
 {const tot={},cnt={};commits.forEach(r=>{const a=(r.areas||r.area_primary||"other").split("|").filter(Boolean);const l=(num(r.prod_add)+num(r.prod_del)+num(r.test_add)+num(r.test_del)+num(r.doc_add))/Math.max(1,a.length);a.forEach(x=>{tot[x]=(tot[x]||0)+l;cnt[x]=(cnt[x]||0)+1})});const mx=Math.max(1,...Object.values(tot));
-$("arch").innerHTML=AREAS.map(([t,g,items])=>`<div class="grp"><b>${t}</b><div class="boxes">${items.map(([id,l])=>{const v=tot[id]||0,a=Math.sqrt(v/mx);return `<div class="box" style="background:color-mix(in srgb,var(--a) ${Math.round(8+92*a)}%,var(--card));${a<.3?"color:var(--ink);text-shadow:none":""}" title="${id}">${l}<small>${fmt(v)} lines · ${cnt[id]||0} commits</small></div>`}).join("")}</div></div>`).join("")}
+$("arch").innerHTML=EDGES.length?archSVG(AREAS,tot,cnt,mx,EDGES):AREAS.map(([t,g,items])=>`<div class="grp"><b>${t}</b><div class="boxes">${items.map(([id,l])=>{const v=tot[id]||0,a=Math.sqrt(v/mx);return `<div class="box" style="background:color-mix(in srgb,var(--a) ${Math.round(8+92*a)}%,var(--card));${a<.3?"color:var(--ink);text-shadow:none":""}" title="${id}">${l}<small>${fmt(v)} lines · ${cnt[id]||0} commits</small></div>`}).join("")}</div></div>`).join("")}
 // complexity
 {const h=Array(10).fill(0);prs.forEach(r=>{if(r.complexity)h[Math.min(9,Math.max(0,Math.round(+r.complexity)-1))]++});const mx=Math.max(1,...h),W=560,H=210;let s="";h.forEach((v,i)=>{const bh=(H-40)*v/mx;s+=`<rect x="${30+i*52}" y="${H-24-bh}" width="46" height="${bh}" fill="${COLORS[0]}" fill-opacity="${.35+.065*i}"><title>${v} PRs</title></rect><text x="${53+i*52}" y="${H-8}" text-anchor="middle">${i+1}</text><text x="${53+i*52}" y="${H-28-bh}" text-anchor="middle">${v||""}</text>`});$("cx").innerHTML=svgWrap(W,H,s)}
 // loc
@@ -205,6 +217,6 @@ function add(p,text,name){state.rows[p]=parseCSV(text);state.names[p]=name||p;st
 function boot(){const M=window.WRAPPED_MANIFEST||{},D=window.WRAPPED_DATA||{};Object.keys(D).forEach(p=>add(p,D[p],(M[p]||{}).name));if(!Object.keys(state.rows).length)$("status").textContent="No bundle found: use the file picker with data/*.csv";[...state.sel].slice(1).forEach(p=>state.sel.delete(p));chips();render()}
 $("file").onchange=async e=>{for(const f of e.target.files){add(f.name.replace(/\.csv$/,""),await f.text())}chips();render()};
 (function(){const q=new URLSearchParams(location.search).get("out")||"";if(!q){$("status").textContent="Add ?out=<name> (see README) or pick CSVs below";boot();return}const sc=document.createElement("script");sc.src="out/"+q+"/data/bundle.js";
-sc.onload=()=>{if(window.WRAPPED_AREAS)AREAS=window.WRAPPED_AREAS.map(g=>[g[0],g[1],g[2]]);document.querySelector("h1").textContent=(window.WRAPPED_TITLE||q)+" Wrapped";if(window.WRAPPED_REPOS){const r=window.WRAPPED_REPOS.map(x=>`<a href="https://github.com/${x.github}" target="_blank" style="color:var(--e)">${x.github}</a>`).join(" · ");document.title=(window.WRAPPED_TITLE||q)+" Wrapped";$("sub0").innerHTML="Repos: "+r}boot()};
+sc.onload=()=>{if(window.WRAPPED_AREAS)AREAS=window.WRAPPED_AREAS.map(g=>[g[0],g[1],g[2]]);EDGES=window.WRAPPED_EDGES||[];document.querySelector("h1").textContent=(window.WRAPPED_TITLE||q)+" Wrapped";if(window.WRAPPED_REPOS){const r=window.WRAPPED_REPOS.map(x=>`<a href="https://github.com/${x.github}" target="_blank" style="color:var(--e)">${x.github}</a>`).join(" · ");document.title=(window.WRAPPED_TITLE||q)+" Wrapped";$("sub0").innerHTML="Repos: "+r}boot()};
 sc.onerror=()=>{$("status").textContent="No out/"+q+"/data/bundle.js — run scripts/update.py --config configs/"+q+".json, or pick CSVs below";boot()};document.body.appendChild(sc)})();
 </script></body></html>
