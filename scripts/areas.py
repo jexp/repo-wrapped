@@ -9,6 +9,14 @@ if PROFILE == "generic":
     def crate_of(path): return None
     def area_of(path):
         p = path.replace("\\", "/"); return p.split("/", 1)[0] if "/" in p else "(root)"
+elif PROFILE == "maven":
+    # module = the directory path before src/ (Maven/Gradle layout), e.g. community/kernel/src/main/java/... -> community/kernel
+    AREAS = []; CORE = set()
+    def crate_of(path): return None
+    def area_of(path):
+        p = path.replace("\\", "/"); parts = p.split("/")
+        if "src" in parts: i = parts.index("src"); return "/".join(parts[:i]) or "(root)"
+        return parts[0] if len(parts) > 1 else "(root)"
 else:
     _p = os.path.join(os.path.dirname(CFG_PATH), PROFILE)
     _s = importlib.util.spec_from_file_location("area_profile", _p); _m = importlib.util.module_from_spec(_s); _s.loader.exec_module(_m)
@@ -27,6 +35,7 @@ def kind(path):
 def layout(observed):
     """[[group title, group id, [[area id, label]]]] for the page's architecture overlay"""
     if PROFILE == "generic": return [["Top-level directories", "dirs", [[a, a] for a in sorted(observed)]]]
+    if PROFILE == "maven": return [["Modules", "modules", [[a, a] for a in sorted(observed)]]]
     groups = {}
     for i, l, g in AREAS: groups.setdefault(g, []).append([i, l])
     return [[g.title(), g, v] for g, v in groups.items()]
