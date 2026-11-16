@@ -33,3 +33,7 @@ open "index.html?out=myrepo"
 ## Architecture diagram
 
 An area profile (Python file) may define `EDGES = [(from_area_id, to_area_id), ...]`, or the config may carry `"edges": [[from, to], ...]`. With edges, the page draws the areas as a layered diagram (one row per group, arrows between components) and colours each box by its share of changed lines. Without edges it shows plain grouped boxes. `areas: "maven"` maps Maven/Gradle modules (directory before `src/`) to areas.
+
+## Repos from sessions
+
+`"repos_from_sessions": true` makes `update.py` read the cwd of every matching Claude Code session (`sessions_match`), resolve it to its GitHub origin and clone, and add repos that are not configured yet (`scripts/discover_repos.py`, also runnable with `--only discover`). An area profile may define `GROUPS` (group id -> title) and order groups top to bottom as layers; a group named `sdlc` is drawn as a side column.

@@ -7,6 +7,10 @@ NAME = CFG["name"]
 OUT = os.path.join(ROOT, "out", NAME); RAW = os.path.join(OUT, "raw") + "/"; DATA = os.path.join(OUT, "data") + "/"
 os.makedirs(RAW, exist_ok=True); os.makedirs(DATA, exist_ok=True)
 REPOS = {r["name"]: r for r in CFG["repos"]}
+_disc = os.path.join(RAW, "discovered-repos.json")   # written by discover_repos.py (config "repos_from_sessions": true)
+if CFG.get("repos_from_sessions") and os.path.exists(_disc):
+    for _r in json.load(open(_disc)):
+        if _r["github"] not in {x["github"] for x in REPOS.values()} and _r["name"] not in REPOS: REPOS[_r["name"]] = _r
 PERSONS = json.load(open(os.path.join(os.path.dirname(CFG_PATH), CFG["persons"])))
 CODE_EXTS = tuple(CFG.get("code_exts") or [".rs"])
 LINEAR = CFG.get("linear")

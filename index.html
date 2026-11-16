@@ -34,7 +34,7 @@ input[type=file]{color:var(--mute)}
 <div class="card wide"><h2>Working-hours heatmap</h2><p>Commits, PR opens and agent sessions by weekday and hour, in each person's modal timezone</p><div id="heat"></div></div>
 <div class="card"><h2>Comments and text volume</h2><p>PR + ticket comments per month (bars) and characters written (line)</p><div id="comments"></div></div>
 <div class="card"><h2>CI runs and CI time</h2><p>Runs per month (bars) and total runner-hours (line); red share = failed</p><div id="ci"></div></div>
-<div class="card wide"><h2>Where the work landed</h2><p>Architecture overlay: box colour = share of changed prod+test lines in that area</p><div id="arch" class="arch"></div></div>
+<div class="card wide"><h2>Where the work landed</h2><p>Architecture overlay, layered (dependants above their dependencies): box colour = share of changed lines in that component; arrows point to what a component builds on; the side column holds the SDLC areas</p><div id="arch" class="arch"></div></div>
 <div class="card wide"><h2>Biggest PRs</h2><p>By complexity, then lines</p><div id="top" class="tiles"></div></div>
 <div class="card"><h2>Complexity of PRs</h2><p>Score 1–10 (lines, areas, crates, core engine, discussion, ADR)</p><div id="cx"></div></div>
 <div class="card"><h2>Production vs test lines per month</h2><p>Lines added by merged PRs (Rust only; commits across all branches would double count)</p><div id="loc"></div></div>
@@ -76,18 +76,21 @@ const h=out.shift();return out.filter(r=>r.length>1).map(r=>{const o={};h.forEac
 function tzMin(s){const m=/([+-])(\d\d):?(\d\d)/.exec(s||"+00:00");return m?(m[1]=="-"?-1:1)*(+m[2]*60+ +m[3]):0}
 function local(r,field){const s=r[field||"start_at"];if(!s)return null;const d=new Date(s);if(isNaN(d))return null;return new Date(d.getTime()+tzMin(r.tz)*60000)}
 const month=d=>d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");
-function archSVG(groups,tot,cnt,mx,edges){const W=178,H=58,GX=16,GY=46,P=10,pos={};const wrap=t=>{const w=t.split(" "),o=[""];w.forEach(x=>{if((o[o.length-1]+" "+x).trim().length>24&&o[o.length-1])o.push(x);else o[o.length-1]=(o[o.length-1]+" "+x).trim()});return o.slice(0,2)};
-const cols=Math.max(...groups.map(g=>g[2].length)),TW=cols*(W+GX)-GX+2*P,lab=[];let y=P;
-const rows=groups.map(([t,g,items])=>{const rw=items.length*(W+GX)-GX,x0=(TW-rw)/2,r={t,y,items:items.map(([id,l],i)=>{const n={id,l,x:x0+i*(W+GX),y,i,row:groups.findIndex(q=>q[1]==g)};pos[id]=n;return n})};y+=H+GY;return r});
-const TH=y-GY+P;let e="";
-edges.forEach(([a,b])=>{const s=pos[a],t=pos[b];if(!s||!t)return;let d;
-if(s.row==t.row){if(Math.abs(s.i-t.i)==1){const l=s.i<t.i,x1=l?s.x+W:s.x,x2=l?t.x:t.x+W,yy=s.y+H/2;d=`M${x1},${yy}L${x2},${yy}`}else{const x1=s.x+W/2,x2=t.x+W/2,top=s.y-22;d=`M${x1},${s.y}C${x1},${top} ${x2},${top} ${x2},${t.y}`}}
+function archSVG(groups,tot,cnt,mx,edges){const W=172,H=56,GX=14,GY=34,P=10,LG=104,pos={},side=groups.filter(g=>g[1]=="sdlc"),main=groups.filter(g=>g[1]!="sdlc");
+const wrap=t=>{const w=t.split(" "),o=[""];w.forEach(x=>{if((o[o.length-1]+" "+x).trim().length>24&&o[o.length-1])o.push(x);else o[o.length-1]=(o[o.length-1]+" "+x).trim()});return o.slice(0,2)};
+const cols=Math.max(...main.map(g=>g[2].length)),MW=cols*(W+GX)-GX,SX=LG+MW+44,TW=SX+(side.length?W+P:0);let y=P;
+const rows=main.map(([t,g,items],ri)=>{const rw=items.length*(W+GX)-GX,x0=LG+(MW-rw)/2,r={t,y,ri,items:items.map(([id,l],i)=>{const n={id,l,x:x0+i*(W+GX),y,i,row:ri};pos[id]=n;return n})};y+=H+GY;return r});
+const MH=y-GY+P;let sy=P+16;const srows=[];side.forEach(([t,g,items])=>items.forEach(([id,l])=>{const n={id,l,x:SX,y:sy,i:0,row:-1};pos[id]=n;srows.push(n);sy+=H+14}));const TH=Math.max(MH,sy);
+let bands="",e="",nodes="";
+rows.forEach((r,k)=>{bands+=`<rect x="0" y="${r.y-GY/2+2}" width="${LG+MW+P}" height="${H+GY-4}" rx="10" style="fill:var(--grid)" fill-opacity="${k%2?.18:.32}"/><text x="10" y="${r.y+H/2+4}" font-size="11" font-weight="700" style="fill:var(--mute)">${r.t.toUpperCase()}</text>`});
+if(srows.length)bands+=`<rect x="${SX-10}" y="${P-4}" width="${W+20}" height="${TH-P*2+8}" rx="10" style="fill:var(--grid)" fill-opacity=".18" stroke="var(--grid)" stroke-dasharray="4 4"/><text x="${SX}" y="${P+8}" font-size="11" font-weight="700" style="fill:var(--mute)">${(side[0][0]).toUpperCase()}</text>`;
+edges.forEach(([a,b])=>{const s=pos[a],t=pos[b];if(!s||!t||s.row<0||t.row<0)return;let d;
+if(s.row==t.row){if(Math.abs(s.i-t.i)==1){const l=s.i<t.i,x1=l?s.x+W:s.x,x2=l?t.x:t.x+W,yy=s.y+H/2;d=`M${x1},${yy}L${x2},${yy}`}else{const x1=s.x+W/2,x2=t.x+W/2,top=s.y-16;d=`M${x1},${s.y}C${x1},${top} ${x2},${top} ${x2},${t.y}`}}
 else{const down=t.row>s.row,x1=s.x+W/2,x2=t.x+W/2,y1=down?s.y+H:s.y,y2=down?t.y:t.y+H,m=(y1+y2)/2;d=`M${x1},${y1}C${x1},${m} ${x2},${m} ${x2},${y2}`}
-e+=`<path d="${d}" fill="none" stroke="var(--mute)" stroke-opacity=".55" stroke-width="1.4" marker-end="url(#ah)"/>`});
-let nodes="";rows.forEach(r=>r.items.forEach(n=>{const v=tot[n.id]||0,a=Math.sqrt(v/mx),L=wrap(n.l),light=a<.3;
-nodes+=`<g><title>${n.id}: ${fmt(v)} lines, ${cnt[n.id]||0} commits</title><rect x="${n.x}" y="${n.y}" width="${W}" height="${H}" rx="9" style="fill:color-mix(in srgb,var(--a) ${Math.round(8+92*a)}%,var(--card))" stroke="var(--grid)"/>`+L.map((t,i)=>`<text x="${n.x+W/2}" y="${n.y+(L.length>1?17:23)+i*14}" text-anchor="middle" font-size="12" font-weight="600" style="fill:${light?"var(--ink)":"#fff"}">${t}</text>`).join("")+`<text x="${n.x+W/2}" y="${n.y+H-8}" text-anchor="middle" font-size="10" style="fill:${light?"var(--mute)":"#ffffffcc"}">${fmt(v)} lines · ${cnt[n.id]||0} commits</text></g>`}));
-const gl=rows.map(r=>`<text x="2" y="${r.y-6}" font-size="10" style="fill:var(--mute)">${r.t.toUpperCase()}</text>`).join("");
-return `<svg viewBox="0 -8 ${TW} ${TH+8}" style="width:100%;height:auto"><defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L8,4L0,8z" style="fill:var(--mute)" fill-opacity=".8"/></marker></defs>${gl}${e}${nodes}</svg>`}
+e+=`<path d="${d}" fill="none" stroke="var(--mute)" stroke-opacity=".4" stroke-width="1.3" marker-end="url(#ah)"/>`});
+const box=n=>{const v=tot[n.id]||0,a=Math.sqrt(v/mx),L=wrap(n.l),light=a<.3;return `<g><title>${n.id}: ${fmt(v)} lines, ${cnt[n.id]||0} commits</title><rect x="${n.x}" y="${n.y}" width="${W}" height="${H}" rx="9" style="fill:color-mix(in srgb,var(--a) ${Math.round(8+92*a)}%,var(--card))" stroke="var(--grid)"/>`+L.map((t,i)=>`<text x="${n.x+W/2}" y="${n.y+(L.length>1?17:23)+i*14}" text-anchor="middle" font-size="12" font-weight="600" style="fill:${light?"var(--ink)":"#fff"}">${t}</text>`).join("")+`<text x="${n.x+W/2}" y="${n.y+H-8}" text-anchor="middle" font-size="10" style="fill:${light?"var(--mute)":"#ffffffcc"}">${fmt(v)} lines · ${cnt[n.id]||0} commits</text></g>`};
+rows.forEach(r=>r.items.forEach(n=>nodes+=box(n)));srows.forEach(n=>nodes+=box(n));
+return `<svg viewBox="0 0 ${TW} ${TH}" style="width:100%;height:auto"><defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L8,4L0,8z" style="fill:var(--mute)" fill-opacity=".8"/></marker></defs>${bands}${e}${nodes}</svg>`}
 function svgWrap(w,h,inner){return `<svg viewBox="0 0 ${w} ${h}">${inner}</svg>`}
 const rowDate=r=>{const v=r.start_at||r.created_at,d=v?new Date(v):null;return d&&!isNaN(d)?d:null};
 function allSel(){let a=[];for(const p of state.sel)a=a.concat(state.rows[p]||[]);return a}

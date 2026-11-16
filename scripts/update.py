@@ -17,11 +17,17 @@ Retries every network call (TLS timeouts happen). Repos, people and area profile
 import argparse, datetime as dt, json, os, subprocess, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 _ap = argparse.ArgumentParser(); _ap.add_argument("--config", default=os.environ.get("WRAPPED_CONFIG") or "../configs/example-generic.json")
-_ap.add_argument("--full", action="store_true"); _ap.add_argument("--only", default="git,prs,runs,linear,sessions,build")
+_ap.add_argument("--full", action="store_true"); _ap.add_argument("--only", default="git,prs,runs,linear,sessions,build")   # plus: discover
 ARGS = _ap.parse_args(); os.environ["WRAPPED_CONFIG"] = os.path.abspath(ARGS.config); os.chdir(HERE)   # subprocesses inherit it
 sys.path.insert(0, HERE)
 from common import CFG, RAW as _RAW, REPOS, LINEAR
 RAW = _RAW.rstrip("/")
+if "discover" in ARGS.only.split(",") or CFG.get("repos_from_sessions"):
+    subprocess.run([sys.executable, "discover_repos.py"], check=False)
+    if CFG.get("repos_from_sessions") and os.path.exists(RAW + "/discovered-repos.json"):
+        have = {r["github"] for r in REPOS.values()}
+        for r in json.load(open(RAW + "/discovered-repos.json")):
+            if r["github"] not in have and r["name"] not in REPOS: REPOS[r["name"]] = r; print("repo from sessions:", r["github"], file=sys.stderr)
 GH = {n: r["github"] for n, r in REPOS.items()}
 CLONES = {n: r["clone"] for n, r in REPOS.items()}
 LINEAR_TEAM = (LINEAR or {}).get("team")
