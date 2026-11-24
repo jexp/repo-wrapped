@@ -227,3 +227,13 @@ meta = {pid: {"name": persons[pid]["name"], "file": f"{pid}.csv", "tz": TZ.get(p
 json.dump(meta, open(D + "manifest.json", "w"), indent=1)
 seen = set(a for rs in rows.values() for r in rs for a in (r["areas"].split("|") if r["areas"] else []) + ([r["area_primary"]] if r["area_primary"] else []))
 open(D + "bundle.js", "w").write("window.WRAPPED_MANIFEST=" + json.dumps(meta) + ";\nwindow.WRAPPED_AREAS=" + json.dumps(layout(seen)) + ";\nwindow.WRAPPED_EDGES=" + json.dumps(EDGES) + ";\nwindow.WRAPPED_TITLE=" + json.dumps(CFG.get("title") or CFG["name"]) + ";\nwindow.WRAPPED_GENERATED=" + json.dumps(dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ")) + ";\nwindow.WRAPPED_REPOS=" + json.dumps([{"name": n, "github": r["github"]} for n, r in REPOS.items()]) + ";\nwindow.WRAPPED_DATA=" + json.dumps(bundle) + ";\n")
+
+# out/index.js: list of existing outputs so the page can offer them as links (script tag works on file://)
+_outs = []
+_od = os.path.dirname(os.path.dirname(D.rstrip("/")))
+for _n in sorted(os.listdir(_od)):
+    _b = os.path.join(_od, _n, "data", "bundle.js")
+    if os.path.isfile(_b):
+        _m = re.search(r'window\.WRAPPED_TITLE=("(?:[^"\\]|\\.)*")', open(_b, errors="ignore").read(2_000_000))
+        _outs.append({"name": _n, "title": json.loads(_m.group(1)) if _m else _n})
+open(os.path.join(_od, "index.js"), "w").write("window.WRAPPED_OUTS=" + json.dumps(_outs) + ";\n")

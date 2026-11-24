@@ -23,10 +23,11 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:4px 8px;t
 .arch{display:grid;gap:8px}.grp{border:1px dashed var(--grid);border-radius:10px;padding:8px}.grp>b{font-size:12px;color:var(--mute)}
 .boxes{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.box{border-radius:8px;padding:6px 8px;font-size:12px;min-width:110px;flex:1;color:#fff;text-shadow:0 1px 2px #0008}
 .box small{display:block;opacity:.9}.nd{transition:opacity .15s}.ed{transition:stroke-opacity .15s}.hl .ed{stroke-opacity:.07}.hl .ed.on{stroke-opacity:1;stroke:var(--a);stroke-width:2.2}.hl .nd{opacity:.3}.hl .nd.on{opacity:1}
-input[type=file]{color:var(--mute)}
+input[type=file]{color:var(--mute)}#outs a{padding:3px 10px;border-radius:999px;background:var(--card);color:var(--ink);text-decoration:none;font-size:13px;border:1px solid var(--grid)}#outs a.cur{background:var(--a);color:#fff;border-color:var(--a)}
 </style></head><body>
 <header><div class="hd"><div><h1>Repo Wrapped</h1><div class="sub" id="sub0"></div></div><div class="rt"><div id="badge" class="badge"></div><div class="range"><label>Range <select id="rsel"><option value="all">all time</option><option value="1">last day</option><option value="7">last week</option><option value="30">last month</option><option value="91">last quarter</option><option value="365">last year</option></select></label><div class="s" id="rlab"></div></div></div></div><div id="sub" style="display:none"></div><div id="cover" style="display:none"></div></header>
 <main>
+<div class="bar" id="outs"></div>
 <div class="bar" id="people"></div>
 <div class="bar"><label class="sub">Add CSV(s) or bundle.js: <input type="file" id="file" accept=".csv,.js" multiple></label><span class="sub" id="status"></span></div>
 <div class="big" id="stats"></div>
@@ -227,9 +228,9 @@ $("days").innerHTML=`<table><tr><th></th><th>lines added</th><th>lines deleted</
 ["rp","rt","rc"].forEach(i=>$(i).oninput=()=>days(unitsOf(selRows())));
 function chips(){$("people").innerHTML=Object.keys(state.rows).map((p,i)=>`<span class="chip ${state.sel.has(p)?"on":""}" data-p="${p}">${state.names[p]||p}</span>`).join("");document.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{const p=c.dataset.p;state.sel.has(p)?state.sel.delete(p):state.sel.add(p);chips();render()})}
 function add(p,text,name){state.rows[p]=parseCSV(text);state.names[p]=name||p;state.sel.add(p)}
-function boot(){const M=window.WRAPPED_MANIFEST||{},D=window.WRAPPED_DATA||{};Object.keys(D).forEach(p=>add(p,D[p],(M[p]||{}).name));if(!Object.keys(state.rows).length)$("status").textContent="No bundle found: use the file picker with data/*.csv";[...state.sel].slice(1).forEach(p=>state.sel.delete(p));chips();render()}
+function boot(){const M=window.WRAPPED_MANIFEST||{},D=window.WRAPPED_DATA||{};Object.keys(D).forEach(p=>add(p,D[p],(M[p]||{}).name));if(!Object.keys(state.rows).length)$("status").textContent="No report loaded: pick one above or use the file picker";[...state.sel].slice(1).forEach(p=>state.sel.delete(p));chips();render()}
 $("file").onchange=async e=>{for(const f of e.target.files){const t=await f.text();if(/\.js$/.test(f.name)){new Function(t)();if(window.WRAPPED_AREAS)AREAS=window.WRAPPED_AREAS.map(g=>[g[0],g[1],g[2]]);EDGES=window.WRAPPED_EDGES||[];const D=window.WRAPPED_DATA||{},M=window.WRAPPED_MANIFEST||{};Object.keys(D).forEach(p=>add(p,D[p],(M[p]||{}).name))}else add(f.name.replace(/\.csv$/,""),t)}chips();render()};
-(function(){const q=new URLSearchParams(location.search).get("out")||"";if(!q){$("status").textContent="Add ?out=<name> (see README) or pick CSVs below";boot();return}const sc=document.createElement("script");sc.src="out/"+q+"/data/bundle.js";
+(function(){const q=new URLSearchParams(location.search).get("out")||"";const oi=document.createElement("script");oi.src="out/index.js";oi.onload=oi.onerror=()=>{const O=window.WRAPPED_OUTS||[];if(O.length)$("outs").innerHTML='<span class="sub">Reports:</span> '+O.map(o=>`<a href="?out=${o.name}" class="${o.name==q?"cur":""}">${o.title}</a>`).join(" ")};document.head.appendChild(oi);if(!q){$("status").textContent="Pick a report above, or add CSVs / bundle.js below";boot();return}const sc=document.createElement("script");sc.src="out/"+q+"/data/bundle.js";
 sc.onload=()=>{if(window.WRAPPED_AREAS)AREAS=window.WRAPPED_AREAS.map(g=>[g[0],g[1],g[2]]);EDGES=window.WRAPPED_EDGES||[];document.querySelector("h1").textContent=(window.WRAPPED_TITLE||q)+" Wrapped";if(window.WRAPPED_REPOS){const r=window.WRAPPED_REPOS.map(x=>`<a href="https://github.com/${x.github}" target="_blank" style="color:var(--e)">${x.github}</a>`).join(" · ");document.title=(window.WRAPPED_TITLE||q)+" Wrapped";$("sub0").innerHTML="Repos: "+r}boot()};
 sc.onerror=()=>{$("status").textContent="No out/"+q+"/data/bundle.js — run scripts/update.py --config configs/"+q+".json, or pick CSVs below";boot()};document.body.appendChild(sc)})();
 </script></body></html>
