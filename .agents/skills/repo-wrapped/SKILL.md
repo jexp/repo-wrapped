@@ -25,6 +25,8 @@ Linear team id — never in tracked `configs/`. Three files, all relative to eac
   "areas": "<name>-areas.py",
   "code_exts": [".rs", ".go", ".py", ".ts", ".js", ".java", ".swift", ".c", ".h"],
   "sessions_match": "regex|on|project|dir|names",
+  "repos_from_sessions": false,
+  "since": "2026-01-01",
   "pricing": {"<model>": {"in": 0.3, "cr": 0.006, "cw": 0, "out": 1.2}}
 }
 ```
@@ -33,6 +35,10 @@ Linear team id — never in tracked `configs/`. Three files, all relative to eac
 {"<id>": {"name": "Real Name", "git_names": ["Real Name"], "git_emails": ["a@x", "b@y"],
           "gh": ["login"], "linear": ["Real Name"], "sessions": true}}
 ```
+Optional keys: `since` (floor date for commits, PRs and CI runs); `repos_from_sessions: true` makes
+`update.py` read the cwd of every session matching `sessions_match`, resolve it to its GitHub origin
+and clone, and add repos not yet configured (`scripts/discover_repos.py`, or `--only discover`).
+
 Set `sessions: true` for exactly one person: the machine's own transcripts are all attributed to them.
 
 ## 2. Discover the facts — never assume them
@@ -57,7 +63,10 @@ Set `sessions: true` for exactly one person: the machine's own transcripts are a
 
 `"areas": "generic"` = top-level directory per area — useless for a workspace repo. A profile file
 next to the config defines `AREAS=[(id,label,group)]`, `area_of(path)`, `crate_of(path)`, `CORE`.
-Robust pattern: discover the crate/dir set from the configured clones at import time
+`"areas": "maven"` maps Maven/Gradle modules (directory before `src/`) to areas. A profile may also
+define `EDGES=[(from_id,to_id)]` (or config `"edges"`) to draw a layered architecture diagram with
+density colouring, and `GROUPS` (group id -> title, ordered top to bottom as layers; a group named
+`sdlc` is a side column). Robust pattern: discover the crate/dir set from the configured clones at import time
 (`os.listdir` each clone's `relate/`, `surfaces/`, … via `common.REPOS`) instead of hardcoding —
 new crates then need no config edit, just a rebuild.
 
